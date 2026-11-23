@@ -1,6 +1,6 @@
 # SPEC – Metroid Prime 3 Archipelago (Entwurf)
 
-Stand: 2026-11-23 · Status: **E1–E4, E7 entschieden; E5, E6 offen**
+Stand: 2026-11-23 · Status: **E1–E4, E7–E16 entschieden (E11 unter Vorbehalt T15); E5, E6 offen**
 
 ## 1. Ziel
 
@@ -43,7 +43,7 @@ Bausteine:
 1. **DB-Konverter**: liest Corruptovania-JSON, erzeugt AP-Regionen, Locations, Regeln (Requirement-Bäume → AP-Rule-Lambdas). Trick-Level als AP-Option.
 2. **APWorld**: Items, Locations, Optionen, Ziel (Dark Samus/Phaaze), Füllitems, `fill_slot_data`.
 3. **Patch-Pfad**: AP-Ergebnis → Corruptovania-Patch-JSON → `MP3Randomizer`. Fremde Items als neutrales „AP-Item“ (Modell + Text) im Spiel.
-4. **Client**: Dolphin-Speicher lesen (welche Pickups eingesammelt), Items ins Inventar schreiben, Item-Index im Spielstand persistieren, optional DeathLink.
+4. **Client**: Flag-Block der Welt lesen (Location-Checks, E8), Items per Soll/Ist-Abgleich ins Inventar schreiben (E9, E11), Seed-Kennung prüfen (T18), optional DeathLink.
 
 ## 3a. Arbeitsregeln für Worker
 
@@ -78,3 +78,12 @@ Bausteine:
 | E5 | Lizenz der APWorld: GPLv3 (wegen abgeleiteter Logikdaten) | GPLv3 | offen |
 | E7 | MVP-Region: PAL RM3P01 (vorhandenes ISO, ohne MP3Update) oder NTSC-U RM3E01 (Patcher-Zielversion, ISO fehlt)? | **PAL RM3P01 für den MVP.** NTSC-U nachziehen, sobald ein Dump vorliegt (Adressen anderer Regionen aus Code, nicht live geprüft) | entschieden 2026-11-23 |
 | E6 | Client-Basis: AP-`CommonClient` + `dolphin-memory-engine` (wie MP1-APWorld) oder Corruptovania-Connector wiederverwenden? | AP-CommonClient + dolphin-memory-engine, Adressen aus Corruptovania-Connector übernehmen | offen |
+| E8 | Location-Checks | Flag-Block der Welt (1024 Byte im Heap): Signatur-Suche nach Laden/Weltwechsel, Adresse merken, Signatur bei jeder Abfrage prüfen. Kein DOL-Hook im MVP | angenommen 2026-11-23 (F-01) |
+| E9 | Item-Vergabe | Direktschreiben von Anzahl/Kapazität in `PS + 0x54 + slot*0xC`, nur wenn Spieler ingame (CPlayer-vtable) und `PowerBeam.capacity > 0` | angenommen 2026-11-23 (F-01) |
+| E10 | Remote-Items | Alle 99 Orte geben lokal nichts (`item_type FF FF FF FF`, 0/0). Auch eigene Items kommen vom Server, `items_handling = 0b111` | angenommen 2026-11-23 (F-01) |
+| E11 | Empfangene Items | Kein gespeicherter Index. Soll-Kapazität je Slot = Startitems aus `slot_data` + Wirkung aller empfangenen Items, nur anheben. Hängt an T15 | angenommen unter Vorbehalt T15 |
+| E12 | Byte↔Ort-Tabelle | Statisch aus SAVW + MREA erzeugt, gilt für alle Seeds, eigenständige Python-Daten, live per Stichprobe geprüft (T12, T13) | angenommen 2026-11-23 (F-01) |
+| E13 | Anzahl Orte | 99 Orte (Pickup-Index 1–99), Ort 0 entfällt | angenommen 2026-11-23 (F-01) |
+| E14 | Pickup-Darstellung | Fremd-Pickups: vorhandenes neutrales Modell, ein gemeinsamer Text „Archipelago-Item“. Eigene Pickups zeigen das echte Item. Texte je Ort nach dem MVP | angenommen 2026-11-23 (F-01) |
+| E15 | Missile-required | Im AP-Patch aus, die Launcher-Sperre bildet der Client ab | angenommen 2026-11-23 (F-01) |
+| E16 | DOL-Hook | Nur falls T11 ein Item findet, das per Direktschreiben nicht wirkt | angenommen 2026-11-23 (F-01) |
