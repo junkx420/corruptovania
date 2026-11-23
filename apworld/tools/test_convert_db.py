@@ -104,7 +104,10 @@ def test_committed_data_is_up_to_date(out_a):
     for name in GENERATED_FILES:
         committed = COMMITTED_DATA / name
         assert committed.exists(), f"{committed} missing: run the generation command from data/README.md"
-        assert committed.read_bytes() == (out_a / name).read_bytes(), f"{name} is stale: regenerate it"
+        # git may check the files out with CRLF (core.autocrlf); only the content has to match
+        assert committed.read_bytes().replace(b"\r\n", b"\n") == (out_a / name).read_bytes(), (
+            f"{name} is stale: regenerate it"
+        )
 
 
 # ---------------------------------------------------------------- 2. locations
