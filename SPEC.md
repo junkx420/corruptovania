@@ -72,7 +72,7 @@ Bausteine:
 | ID | Frage | Vorschlag | Status |
 |---|---|---|---|
 | E1 | Architektur | **Eigenständige APWorld**, Logik aus Corruptovania-DB konvertiert, Corruptovania nur als Patcher | entschieden 2026-11-23 |
-| E2 | Zielplattform/Spielversion | **Nur Dolphin**, nur die Version, die der Patcher heute unterstützt. T01: implizit NTSC-U RM3E01. PAL RM3P01 funktioniert ohne MP3Update/Deflicker. Trilogy geht nicht | entschieden 2026-11-23 |
+| E2 | Zielplattform/Spielversion | **Nur Dolphin**, nur die Version, die der Patcher heute unterstützt. T01: implizit NTSC-U RM3E01. PAL RM3P01 funktioniert ohne MP3Update/Deflicker. Trilogy geht nicht. **PrimeHack** (Dolphin-Fork mit Maus-Steuerung) gilt als unterstützter Emulator, wird ab T10 zum Testen genutzt | entschieden 2026-11-23 |
 | E3 | MVP-Umfang | **Nur Item-Shuffle, Standard-Startort, festes Ziel Dark Samus.** Startort, Trick-Level, DeathLink erst in F9/F10 | entschieden 2026-11-23 |
 | E4 | Repo-Hosting | **Fork `junkx420/corruptovania`, Arbeitsbranch `archipelago`** (Standardbranch). `main` bleibt Spiegel von Upstream. APWorld liegt im selben Repo unter `apworld/metroidprime3/`, Konverter unter `apworld/tools/` | entschieden 2026-11-23 |
 | E5 | Lizenz der APWorld: GPLv3 (wegen abgeleiteter Logikdaten) | GPLv3 | offen |
