@@ -12,7 +12,7 @@ Stand: 2026-11-23 · MVP gemäß SPEC.md E1–E3.
 | T06 | (F6) Client: Location-Checks senden | offen (wartet auf T02, E6) | – | – |
 | T07 | (F7) Client: Items empfangen, Wiederaufnahme nach Neustart | offen (wartet auf T06) | – | – |
 | T08 | (F8) Ende-zu-Ende-Test 2-Spieler-Multiworld | offen (wartet auf T05, T07) | – | – |
-| T09 | Patcher-Analyse (nur lesen): Wie setzt MP3Randomizer Pickups, welche Item-IDs/Slots sind frei, lässt sich pro Location ein eindeutiger Marker schreiben? Eingabe für F-01 | läuft | – | – |
+| T09 | Patcher-Analyse (nur lesen): Wie setzt MP3Randomizer Pickups, welche Item-IDs/Slots sind frei, lässt sich pro Location ein eindeutiger Marker schreiben? Eingabe für F-01 | fertig (Live-Test nicht gemacht) | Worker T09, 2026-11-23 | `docs/AP_PATCHER_NOTES.md`. Ein Pickup hat im Patch-JSON keine eigenen Felder, nur ein Zeichen im `seed`-String. Item, Modell, Text, Menge stehen fest in `Item.cs`. Der Patcher schreibt den 4-Byte-Hash (`item_type`), das Spiel löst ihn über eine sortierte 59-Einträge-Tabelle in `main.dol` (PAL `0x80584AB8`) in den Slot auf (eigene Messung). **Frei:** 43, 53–61 (kein Hash, per Pickup nicht erreichbar), 47 (Hash vorhanden, einziger freier adressierbarer Slot). Slots 68/69 nutzt der Patcher selbst als Temp-Marker (Missile-Required-Flags). Patcher fasst `main.dol` nicht an. Ort 0 wird nie gepatcht. **Marker pro Location:** nur bedingt machbar (Bitmaske hängt an der Klemmung der Slots, ungeprüft). **DOL-Hook:** machbar mit Aufwand (Code-Lücken in `.init`, `add_power_up` PAL bestätigt, Frame-Einstieg unbekannt). Offen: Live-Test Klemmung von Slot 47 |
 
 T06/T07 sind blockiert durch F-01.
 
