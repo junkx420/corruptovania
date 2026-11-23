@@ -87,3 +87,4 @@ Bausteine:
 | E14 | Pickup-Darstellung | Fremd-Pickups: vorhandenes neutrales Modell, ein gemeinsamer Text „Archipelago-Item“. Eigene Pickups zeigen das echte Item. Texte je Ort nach dem MVP | angenommen 2026-11-23 (F-01) |
 | E15 | Missile-required | Im AP-Patch aus, die Launcher-Sperre bildet der Client ab | angenommen 2026-11-23 (F-01) |
 | E16 | DOL-Hook | Nur falls T11 ein Item findet, das per Direktschreiben nicht wirkt | angenommen; T11: Bedingung nicht erfüllt, kein Hook im MVP |
+| E17 | Ort 0 / Pool-Größe | Standard-Pool hat 100 Items, AP hat 99 Orte. Ort 0 (nie gepatcht) behält sein Vanilla-Item; dieses Item ist nicht im AP-Pool. Der AP-Pool hat 99 Items | angenommen 2026-11-24 |
