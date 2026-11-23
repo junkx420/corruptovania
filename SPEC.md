@@ -45,6 +45,13 @@ Bausteine:
 3. **Patch-Pfad**: AP-Ergebnis → Corruptovania-Patch-JSON → `MP3Randomizer`. Fremde Items als neutrales „AP-Item“ (Modell + Text) im Spiel.
 4. **Client**: Dolphin-Speicher lesen (welche Pickups eingesammelt), Items ins Inventar schreiben, Item-Index im Spielstand persistieren, optional DeathLink.
 
+## 3a. Arbeitsregeln für Worker
+
+- Gearbeitet wird auf Branch `archipelago`, Remote `origin` = `junkx420/corruptovania`. `upstream` = Original-Repo; nie dorthin pushen.
+- Jeder Worker committet nur die Dateien, die ihm freigegeben sind, und pusht am Ende. Vorher `git pull --rebase origin archipelago` ausführen. Konflikte in STATUS.md lösen, ohne fremde Zeilen zu ändern.
+- Nie ins Repo: ISOs, Spieldateien, Dolphin, persönliche Pfade, Builds (`build/`, `venv/`).
+- Die APWorld darf zur Laufzeit nicht von Randovania abhängen. Der Konverter erzeugt eigenständige Python-Daten.
+
 ## 4. Features in Reihenfolge
 
 | # | Feature | Abhängig von |
