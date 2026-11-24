@@ -600,4 +600,5 @@ UNPATCHED_LOCATION = {'id': 0,
  'region': 'G.F.S. Olympus',
  'area': 'MedLab Delta',
  'node': 'Pickup (Phazon Enhancement Device)',
- 'category': 'major'}
+ 'category': 'major',
+ 'vanilla_item': 'Hypermode'}

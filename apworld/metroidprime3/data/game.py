@@ -71,6 +71,7 @@ REQUIREMENT_KINDS = {'and': 1844,
  'version': 1}
 
 UNSUPPORTED_KINDS = {'event_negated': {'count': 54,
-                   'reason': "'Before <event>' is not monotonic; AP rules cannot express it. MVP: not satisfied."},
+                   'reason': "'Before <event>' is not monotonic. Counts as satisfied; the escape_requirement on every "
+                             'connection into the event node keeps the player from being trapped (E18).'},
  'item_negated': {'count': 0, 'reason': "'No <item>' is not monotonic. MVP: not satisfied."},
  'node': {'count': 0, 'reason': 'NodeRequirement (node resource). MVP: not satisfied.'}}

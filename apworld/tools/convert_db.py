@@ -9,8 +9,12 @@ never by parsing the JSON ourselves. The output is declarative and imports nothi
 Output files (see apworld/metroidprime3/data/README.md for the format):
     logic.py      REGIONS, CONNECTIONS, EVENTS, TEMPLATES, NODE_TYPES
     locations.py  LOCATIONS (99, id = pickup index 1-99), UNPATCHED_LOCATION (index 0, E13)
-    items.py      ITEMS (AP pool, 99 items), STARTING_ITEMS, LOCATION_0_ITEM (vanilla item of index 0, E17)
+    items.py      ITEMS (AP pool, 99 items incl. Hypermode, one Missile Expansion less, E17), STARTING_ITEMS
     game.py       VICTORY_REQUIREMENT, START_LOCATION, SETTINGS, TRICKS, requirement kind statistics
+
+Dangerous events (E18): every event that occurs negated ("before <event>") gets an escape_requirement (way from its
+event node back to a ship in the state "after X", see EscapeSolver); it is ANDed onto every connection into the event
+node. "before <event>" itself stays in the data and counts as satisfied in the logic.
 
 The output is deterministic (no set iteration, no timestamps).
 """
@@ -54,7 +58,8 @@ CONVERTED_KINDS = frozenset(
     {"and", "or", "template", "item", "event", "trick", "damage", "misc", "misc_negated", "version"}
 )
 UNSUPPORTED_KINDS = {
-    "event_negated": "'Before <event>' is not monotonic; AP rules cannot express it. MVP: not satisfied.",
+    "event_negated": "'Before <event>' is not monotonic. Counts as satisfied; the escape_requirement on every "
+                     "connection into the event node keeps the player from being trapped (E18).",
     "item_negated": "'No <item>' is not monotonic. MVP: not satisfied.",
     "node": "NodeRequirement (node resource). MVP: not satisfied.",
 }
@@ -67,6 +72,8 @@ TYPE_NAMES = {
     ResourceType.MISC: "misc",
 }
 NETWORK_EVENT = "Teleporter Network: {}"
+# E17: Hypermode goes into the AP pool, one of these leaves it, so the pool stays at 99 (= locations).
+DROPPED_FROM_POOL = "Missile Expansion"
 LOCK_EVENT = "Dock Lock: {} - {} - {}"
 
 
@@ -263,7 +270,7 @@ class Converter:
 
     # ---------------- items ----------------
     def vanilla_item_of_location_0(self) -> str:
-        """The standard pickup whose original location is pickup index 0 (not in the AP pool, E17)."""
+        """The standard pickup whose original location is pickup index 0 (information only, E17)."""
         db = default_database.pickup_database_for_game(GAME)
         names = [n for n, d in db.standard_pickups.items() if any(i.index == 0 for i in d.original_locations)]
         if len(names) != 1:
@@ -305,14 +312,15 @@ class Converter:
                             walk(node[key])
         return needed
 
-    def convert_items(self, needed: dict[str, int]) -> tuple[list[dict], list[dict], dict]:
+    def convert_items(self, needed: dict[str, int]) -> tuple[list[dict], list[dict]]:
+        """AP pool (E17): the standard pool (100) minus one Missile Expansion (the last one) = 99 items.
+        Hypermode (vanilla item of the unpatched location 0) stays in the pool."""
         pool = pool_creator.calculate_pool_results(self.config, self.game)
-        vanilla = self.vanilla_item_of_location_0()
         to_place = list(pool.to_place)
-        drop = [i for i, p in enumerate(to_place) if p.name == vanilla]
-        if len(drop) != 1:
-            raise ValueError(f"Standard pool must contain {vanilla!r} exactly once, found {len(drop)}")
-        vanilla_pickup = to_place.pop(drop[0])
+        drop = [i for i, p in enumerate(to_place) if p.name == DROPPED_FROM_POOL]
+        if not drop:
+            raise ValueError(f"Standard pool contains no {DROPPED_FROM_POOL!r}")
+        to_place.pop(drop[-1])
 
         def group(pickups) -> dict[str, list]:
             grouped: dict[str, list] = {}
@@ -359,8 +367,7 @@ class Converter:
                 "stages": stages,
             }
 
-        return ([record(ps) for ps in shuffled.values()], [record(ps) for ps in starting.values()],
-                record([vanilla_pickup]))
+        return [record(ps) for ps in shuffled.values()], [record(ps) for ps in starting.values()]
 
     # ---------------- settings ----------------
     def convert_settings(self) -> dict:
@@ -418,9 +425,10 @@ class Converter:
         logic = {"REGIONS": regions, "CONNECTIONS": connections, "EVENTS": events,
                  "TEMPLATES": templates, "NODE_TYPES": node_types}
         locations, location_0 = self.convert_locations()
-        items, starting_items, location_0_item = self.convert_items(self.required_amounts(logic))
+        location_0["vanilla_item"] = self.vanilla_item_of_location_0()
+        items, starting_items = self.convert_items(self.required_amounts(logic))
         settings = self.convert_settings()
-        return {
+        files = {
             "logic.py": logic,
             "game.py": {"VICTORY_REQUIREMENT": victory,
                         "START_LOCATION": settings["starting_location"],
@@ -431,9 +439,292 @@ class Converter:
                         "UNSUPPORTED_KINDS": {k: {"count": self.kind_counts.get(k, 0), "reason": v}
                                               for k, v in UNSUPPORTED_KINDS.items()}},
             "locations.py": {"LOCATIONS": locations, "UNPATCHED_LOCATION": location_0},
-            "items.py": {"ITEMS": items, "STARTING_ITEMS": starting_items,
-                         "LOCATION_0_ITEM": location_0_item},
+            "items.py": {"ITEMS": items, "STARTING_ITEMS": starting_items},
         }
+        attach_escape_requirements(files)
+        return files
+
+
+# ---------------------------------------------------------------- escape requirements (E18)
+# A requirement in disjunctive normal form: a list of terms (OR), each term a dict {(type, name): amount} (AND).
+# TRUE = [{}], FALSE = []. Terms are kept minimal: a term that needs at least everything another term needs is dropped.
+TRUE: list = [{}]
+FALSE: list = []
+
+
+def _implies(stronger: dict, weaker: dict) -> bool:
+    """True if every inventory that satisfies ``stronger`` also satisfies ``weaker``."""
+    return all(stronger.get(k, -1) >= v for k, v in weaker.items())
+
+
+def dnf_or(*alternatives: list) -> list:
+    terms = sorted((t for alt in alternatives for t in alt), key=len)
+    out: list = []
+    for t in terms:
+        if not any(_implies(t, o) for o in out):
+            out.append(t)
+    return out
+
+
+def dnf_and(a: list, b: list) -> list:
+    if not a or not b:
+        return FALSE
+    merged = []
+    for x in a:
+        for y in b:
+            t = dict(x)
+            for k, v in y.items():
+                if t.get(k, -1) < v:
+                    t[k] = v
+            merged.append(t)
+    return dnf_or(merged)
+
+
+def dnf_to_requirement(dnf: list) -> dict:
+    """Deterministic requirement tree of a DNF: {"and": []} = TRUE, {"or": []} = FALSE."""
+
+    def atom(key, amount):
+        return {"type": key[0], "name": key[1], "amount": amount}
+
+    terms = sorted((sorted(t.items()) for t in dnf), key=lambda t: (len(t), t))
+    reqs = []
+    for t in terms:
+        atoms = [atom(k, v) for k, v in t]
+        reqs.append(atoms[0] if len(atoms) == 1 else {"and": atoms})
+    if not reqs:
+        return {"or": []}
+    if reqs == [{"and": []}]:
+        return {"and": []}
+    return reqs[0] if len(reqs) == 1 else {"or": reqs}
+
+
+def requirement_atoms(req: dict, templates: dict, out: set | None = None) -> set:
+    """All (type, name) leaves of a requirement tree, templates expanded."""
+    out = set() if out is None else out
+    if "and" in req or "or" in req:
+        for r in req.get("and", []) + req.get("or", []):
+            requirement_atoms(r, templates, out)
+    elif req["type"] == "template":
+        requirement_atoms(templates[req["name"]], templates, out)
+    else:
+        out.add((req["type"], req.get("name"), bool(req.get("negate", False))))
+    return out
+
+
+def dangerous_events(logic: dict, victory: dict) -> list[str]:
+    """Every event that occurs negated ("before <event>") anywhere in the data, sorted."""
+    found: set[str] = set()
+    trees = [c["requirement"] for c in logic["CONNECTIONS"]] + list(logic["TEMPLATES"].values()) + [victory]
+    trees += [s["requirement"] for e in logic["EVENTS"].values() for s in e["sources"]]
+    for info_region in logic["REGIONS"].values():
+        for area in info_region["areas"].values():
+            for node in area["nodes"].values():
+                trees += [node[k] for k in ("is_unlocked", "requirement_to_activate") if k in node]
+    for tree in trees:
+        for kind, name, negate in _atoms_no_tpl(tree):
+            if kind == "event" and negate:
+                found.add(name)
+    return sorted(found)
+
+
+def _atoms_no_tpl(req: dict):
+    if "and" in req or "or" in req:
+        for r in req.get("and", []) + req.get("or", []):
+            yield from _atoms_no_tpl(r)
+    else:
+        yield req["type"], req.get("name"), bool(req.get("negate", False))
+
+
+class EscapeSolver:
+    """escape_requirement of a dangerous event X (E18).
+
+    State "after X": X is triggered ("before X" false, event X true), the player stands at the event node and owns
+    only what he had when entering it. The requirement says when a ship (teleporter_network node whose
+    ``is_unlocked`` holds) is reachable from there. It is the least fixpoint of "node reachable from the event node"
+    over DNFs, evaluated symbolically:
+        item / damage         -> atom
+        trick / misc / version -> constant from SETTINGS (preset: all tricks off). With tricks enabled later the
+                                 gate is stricter than necessary, never too loose.
+        before Y (Y != X)     -> satisfied (as everywhere in the logic)
+        event Y               -> atom, unless Y is only reachable after X (with all items, X's node blocked):
+                                 then Y is replaced by its own requirement from the event node (recursively).
+        "no item", node       -> not satisfied (do not occur)
+    """
+
+    def __init__(self, logic: dict, settings: dict) -> None:
+        self.logic = logic
+        self.settings = settings
+        self.templates = logic["TEMPLATES"]
+        self.targets = []
+        for rname, info_region in logic["REGIONS"].items():
+            for aname, area in info_region["areas"].items():
+                for nname, node in area["nodes"].items():
+                    if node["type"] == "teleporter_network":
+                        self.targets.append(((rname, aname, nname), node["is_unlocked"]))
+        self.out = collections.defaultdict(list)
+        for conn in logic["CONNECTIONS"]:
+            self.out[tuple(conn["from"])].append(conn)
+
+    def static(self, kind: str, name: str, amount: int, negate: bool) -> bool:
+        table = {"trick": self.settings["trick_level"]["levels"], "misc": self.settings["misc_resources"],
+                 "version": self.settings["version_resources"]}[kind]
+        have = table.get(name, 0)
+        return have < amount if negate else have >= amount
+
+    def to_dnf(self, req: dict, x: str, inlined: set[str], ev_dnf: dict) -> list:
+        if "and" in req:
+            acc = TRUE
+            for r in req["and"]:
+                acc = dnf_and(acc, self.to_dnf(r, x, inlined, ev_dnf))
+                if not acc:
+                    break
+            return acc
+        if "or" in req:
+            return dnf_or(*(self.to_dnf(r, x, inlined, ev_dnf) for r in req["or"]))
+        kind, name, amount, negate = req["type"], req.get("name"), req.get("amount", 1), req.get("negate", False)
+        if kind == "template":
+            return self.to_dnf(self.templates[name], x, inlined, ev_dnf)
+        if kind == "event":
+            if negate:
+                return FALSE if name == x else TRUE
+            if name == x:
+                return TRUE
+            if name in inlined:
+                return ev_dnf.get(name, FALSE)
+            return [{("event", name): 1}]
+        if kind in ("item", "node"):
+            if kind == "node" or negate:
+                return FALSE
+            return [{("item", name): amount}]
+        if kind in ("trick", "damage") and negate:
+            raise ValueError(f"negated {kind} requirement is not supported: {req}")
+        if kind == "damage":
+            return TRUE if amount <= 0 else [{(kind, name): amount}]
+        if kind in ("trick", "misc", "version"):
+            return TRUE if self.static(kind, name, amount, negate) else FALSE
+        raise ValueError(f"Unknown requirement type {kind!r}")
+
+    def solve(self, x: str, node: tuple, inlined: set[str]) -> list:
+        """Worklist fixpoint with delta propagation. Nothing is propagated out of a ship node: every term that
+        passes a ship is implied by a term that already reached it."""
+        target_nodes = {n for n, _ in self.targets}
+        reach: dict[tuple, list] = {node: TRUE}
+        delta: dict[tuple, list] = {node: TRUE}
+        ev_dnf: dict[str, list] = {}
+        sources = collections.defaultdict(list)  # node -> [(event, requirement)]
+        for y in sorted(inlined):
+            for s in self.logic["EVENTS"][y]["sources"]:
+                sources[tuple(s["node"])].append((y, s["requirement"]))
+        users = collections.defaultdict(list)  # inlined event -> connections whose requirement uses it
+        static_cache: dict[int, list] = {}
+        dynamic: set[int] = set()
+        for conns in self.out.values():
+            for conn in conns:
+                used = {n for k, n, neg in requirement_atoms(conn["requirement"], self.templates)
+                        if k == "event" and not neg and n in inlined}
+                for y in used:
+                    users[y].append(conn)
+                if used:
+                    dynamic.add(id(conn["requirement"]))
+        for _, reqs in sources.items():
+            for _, r in reqs:
+                if any(k == "event" and not neg and n in inlined for k, n, neg in requirement_atoms(r, self.templates)):
+                    dynamic.add(id(r))
+
+        def req_dnf(req: dict) -> list:
+            key = id(req)
+            if key in dynamic:
+                return self.to_dnf(req, x, inlined, ev_dnf)
+            if key not in static_cache:
+                static_cache[key] = self.to_dnf(req, x, inlined, ev_dnf)
+            return static_cache[key]
+
+        queue = [node]
+        changed_events: list[str] = []
+
+        def add_node(to: tuple, gain: list) -> None:
+            old = reach.get(to, FALSE)
+            added = [t for t in dnf_or(gain) if not any(_implies(t, o) for o in old)]
+            if not added:
+                return
+            reach[to] = dnf_or(old, added)
+            delta[to] = dnf_or(delta.get(to, FALSE), added)
+            queue.append(to)
+
+        def add_event(y: str, gain: list) -> None:
+            old = ev_dnf.get(y, FALSE)
+            if all(any(_implies(t, o) for o in old) for t in gain):
+                return
+            ev_dnf[y] = dnf_or(old, gain)
+            changed_events.append(y)
+
+        while queue or changed_events:
+            while queue:
+                frm = queue.pop()
+                d = delta.pop(frm, FALSE)
+                if not d:
+                    continue
+                for y, r in sources.get(frm, ()):
+                    gain = dnf_and(d, req_dnf(r))
+                    if gain:
+                        add_event(y, gain)
+                if frm in target_nodes and frm != node:
+                    continue
+                for conn in self.out.get(frm, ()):
+                    gain = dnf_and(d, req_dnf(conn["requirement"]))
+                    if gain:
+                        add_node(tuple(conn["to"]), gain)
+            while changed_events:
+                y = changed_events.pop()
+                for conn in users[y]:
+                    frm = tuple(conn["from"])
+                    if frm in reach and not (frm in target_nodes and frm != node):
+                        gain = dnf_and(reach[frm], req_dnf(conn["requirement"]))
+                        if gain:
+                            add_node(tuple(conn["to"]), gain)
+                for n, reqs in sources.items():
+                    if n in reach:
+                        for z, r in reqs:
+                            if id(r) in dynamic:
+                                gain = dnf_and(reach[n], req_dnf(r))
+                                if gain:
+                                    add_event(z, gain)
+        return dnf_or(*(dnf_and(reach[n], self.to_dnf(unlocked, x, inlined, ev_dnf))
+                        for n, unlocked in self.targets if n in reach))
+
+
+def attach_escape_requirements(files: dict[str, dict]) -> None:
+    """E18: compute escape_requirement for every dangerous event, store it in EVENTS and AND it onto every
+    connection into the event node (marked with ``escape_gate``). Works on the generated data only."""
+    import importlib.util
+    from types import SimpleNamespace
+
+    spec = importlib.util.spec_from_file_location("playthrough_sim", Path(__file__).with_name("playthrough_sim.py"))
+    playthrough_sim = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(playthrough_sim)
+
+    logic, game = files["logic.py"], files["game.py"]
+    data = SimpleNamespace(**{k[:-3]: SimpleNamespace(**v) for k, v in files.items()})
+    world = playthrough_sim.World(data)
+    all_inv = world.all_items()
+    _, all_events, _, _ = world.reach(all_inv)
+    solver = EscapeSolver(logic, game["SETTINGS"])
+    for x in dangerous_events(logic, game["VICTORY_REQUIREMENT"]):
+        event = logic["EVENTS"][x]
+        nodes = {tuple(s["node"]) for s in event["sources"]}
+        if event["kind"] != "db" or len(nodes) != 1:
+            raise ValueError(f"dangerous event {x!r} must have exactly one event node, has {sorted(nodes)}")
+        (node,) = nodes
+        _, without_x, _, _ = world.reach(all_inv, blocked_nodes={node}, blocked_events={x})
+        inlined = {y for y in all_events if y not in without_x and y != x}
+        escape = dnf_to_requirement(solver.solve(x, node, inlined))
+        event["node"] = node
+        event["escape_requirement"] = escape
+        event["escape_inlined_events"] = sorted(inlined)
+        for conn in logic["CONNECTIONS"]:
+            if tuple(conn["to"]) == node:
+                conn["requirement"] = {"and": [conn["requirement"], escape]}
+                conn["escape_gate"] = x
 
 
 HEADER = "# Generated by apworld/tools/convert_db.py from the Corruptovania prime3 database. Do not edit.\n"

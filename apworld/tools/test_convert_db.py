@@ -1,4 +1,4 @@
-"""Acceptance tests for apworld/tools/convert_db.py (T03).
+"""Acceptance tests for apworld/tools/convert_db.py (T03, T20) and apworld/tools/playthrough_sim.py.
 
 Run from the repo root:
     venv/Scripts/python.exe -m pytest apworld/tools/test_convert_db.py -s
@@ -12,8 +12,8 @@ from __future__ import annotations
 import ast
 import collections
 import importlib.util
-import math
 import os
+import random
 import subprocess
 import sys
 from pathlib import Path
@@ -32,7 +32,19 @@ KNOWN_REQUIREMENT_TYPES = frozenset(
     {"template", "item", "event", "trick", "damage", "misc", "version", "node"}
 )
 EXPECTED_LOCATION_0_ITEM = "Hypermode"
+DROPPED_FROM_POOL = "Missile Expansion"
 GOAL_EVENT = "Aurora Unit 313"
+
+
+def _load_simulator() -> ModuleType:
+    spec = importlib.util.spec_from_file_location("playthrough_sim", TOOLS_DIR / "playthrough_sim.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault("playthrough_sim", module)
+    spec.loader.exec_module(module)
+    return module
+
+
+playthrough_sim = _load_simulator()
 
 
 # ---------------------------------------------------------------- helpers
@@ -119,6 +131,7 @@ def test_exactly_99_locations_with_ids_1_to_99(data):
     for loc in locations:
         assert loc["name"] == f"{loc['region']} - {loc['area']} - {loc['node']}"
     assert data.locations.UNPATCHED_LOCATION["id"] == 0
+    assert data.locations.UNPATCHED_LOCATION["vanilla_item"] == EXPECTED_LOCATION_0_ITEM
 
 
 def test_location_id_is_pickup_index_in_corruptovania_loader(data, converter):
@@ -144,7 +157,9 @@ def test_location_id_is_pickup_index_in_corruptovania_loader(data, converter):
 
 
 # ---------------------------------------------------------------- 3. items
-def test_exactly_99_items_matching_standard_pool_minus_location_0(data, converter):
+def test_exactly_99_items_standard_pool_minus_one_missile_expansion(data, converter):
+    """E17 (revised): Hypermode (vanilla item of the unpatched location 0) is in the AP pool,
+    one Missile Expansion less, 99 items = 99 locations."""
     from randovania.game_description import default_database
     from randovania.generator.pickup_pool import pool_creator
 
@@ -155,11 +170,9 @@ def test_exactly_99_items_matching_standard_pool_minus_location_0(data, converte
     db = default_database.pickup_database_for_game(converter.preset.game)
     at_zero = [n for n, d in db.standard_pickups.items() if any(i.index == 0 for i in d.original_locations)]
     assert at_zero == [EXPECTED_LOCATION_0_ITEM]
-    assert data.items.LOCATION_0_ITEM["name"] == EXPECTED_LOCATION_0_ITEM
 
     expected = standard.copy()
-    expected[EXPECTED_LOCATION_0_ITEM] -= 1
-    expected = +expected  # drops zero counts
+    expected[DROPPED_FROM_POOL] -= 1
 
     actual = collections.Counter()
     for item in data.items.ITEMS:
@@ -167,12 +180,14 @@ def test_exactly_99_items_matching_standard_pool_minus_location_0(data, converte
         actual[item["name"]] += item["count"]
 
     assert sum(actual.values()) == 99 == len(data.locations.LOCATIONS)
-    assert actual == expected
-    assert EXPECTED_LOCATION_0_ITEM not in actual
+    assert actual == +expected
+    assert actual[EXPECTED_LOCATION_0_ITEM] == 1
+    assert actual[DROPPED_FROM_POOL] == standard[DROPPED_FROM_POOL] - 1
+    assert not hasattr(data.items, "LOCATION_0_ITEM"), "location 0 is no part of the AP logic"
 
 
 def test_item_records_are_complete(data):
-    for item in data.items.ITEMS + data.items.STARTING_ITEMS + [data.items.LOCATION_0_ITEM]:
+    for item in data.items.ITEMS + data.items.STARTING_ITEMS:
         assert set(item) == {"name", "category", "location_category", "count", "progression", "progressive",
                              "is_expansion", "unlocks_lock", "lock", "stages"}
         assert item["count"] >= 1
@@ -251,119 +266,225 @@ def test_converter_rejects_unknown_requirement_types(converter):
         del converter.kind_counts["mystery_kind"]
 
 
-# ---------------------------------------------------------------- 5. reachability
-class Evaluator:
-    """Minimal AP-style evaluator of the generated data (what T04 has to implement)."""
-
-    def __init__(self, data: Data, tricks: dict[str, int] | None = None, before_event: bool = False) -> None:
-        self.data = data
-        self.before_event = before_event  # value of every "before <event>" requirement (MVP: False)
-        settings = data.game.SETTINGS
-        self.tricks = dict(settings["trick_level"]["levels"]) if tricks is None else tricks
-        self.misc = settings["misc_resources"]
-        self.version = settings["version_resources"]
-        self.damage = settings["damage"]
-        self.templates = data.logic.TEMPLATES
-        self.items: dict[str, int] = collections.defaultdict(int)
-        self.events: set[str] = set()
-
-    def give(self, record: dict) -> None:
-        stages = record["stages"]
-        for copy in range(record["count"]):
-            for resource, amount in stages[min(copy, len(stages) - 1)]:
-                self.items[resource] += amount
-
-    def energy(self) -> int:
-        return self.damage["starting_energy"] + self.damage["energy_per_tank"] * self.items["Energy Tank"]
-
-    def sat(self, req: dict) -> bool:
-        if "and" in req:
-            return all(self.sat(r) for r in req["and"])
-        if "or" in req:
-            return any(self.sat(r) for r in req["or"])
-        kind, amount, negate = req["type"], req.get("amount", 1), req.get("negate", False)
-        if kind == "template":
-            return self.sat(self.templates[req["name"]])
-        if kind == "node":
-            return False  # unsupported in the MVP
-        if kind == "event":
-            return self.before_event if negate else req["name"] in self.events  # "before event": MVP not satisfied
-        if kind == "item":
-            return False if negate else self.items[req["name"]] >= amount  # "no item": not satisfied
-        if kind == "damage":
-            reduction = 1.0
-            for item, multiplier in self.damage["reductions"].get(req["name"], []):
-                if item is None or self.items[item] > 0:
-                    reduction = min(reduction, multiplier)
-            needed = math.ceil(reduction * int(amount * self.damage["strictness"]))
-            return self.energy() > needed
-        table = {"trick": self.tricks, "misc": self.misc, "version": self.version}.get(kind)
-        if table is None:
-            raise AssertionError(f"unknown requirement type {kind}")
-        have = table.get(req["name"], 0)
-        return have < amount if negate else have >= amount
-
-    def run(self) -> set[tuple[str, str, str]]:
-        logic = self.data.logic
-        reached = {tuple(self.data.game.START_LOCATION)}
-        changed = True
-        while changed:
-            changed = False
-            for conn in logic.CONNECTIONS:
-                if tuple(conn["to"]) not in reached and tuple(conn["from"]) in reached and self.sat(conn["requirement"]):
-                    reached.add(tuple(conn["to"]))
-                    changed = True
-            for name, event in logic.EVENTS.items():
-                if name in self.events:
-                    continue
-                for src in event["sources"]:
-                    if tuple(src["node"]) in reached and self.sat(src["requirement"]):
-                        self.events.add(name)
-                        changed = True
-                        break
-        return reached
+# ---------------------------------------------------------------- 5. dangerous events, escape gates (E18)
+def _negated_events(req: dict, out: set[str]) -> None:
+    if "and" in req or "or" in req:
+        for sub in req.get("and", []) + req.get("or", []):
+            _negated_events(sub, out)
+    elif req["type"] == "event" and req.get("negate"):
+        out.add(req["name"])
 
 
-def _all_items_no_tricks(data: Data, before_event: bool = False) -> Evaluator:
-    ev = Evaluator(data, tricks={name: 0 for name in data.game.TRICKS}, before_event=before_event)
-    for record in data.items.ITEMS + data.items.STARTING_ITEMS + [data.items.LOCATION_0_ITEM]:
-        ev.give(record)
-    return ev
+def _events_occurring_negated(data: Data) -> set[str]:
+    """Events that occur negated anywhere, searched independently of the converter (gates stripped)."""
+    logic = data.logic
+    found: set[str] = set()
+    for conn in logic.CONNECTIONS:
+        _negated_events(conn["requirement"]["and"][0] if conn.get("escape_gate") else conn["requirement"], found)
+    for tpl in logic.TEMPLATES.values():
+        _negated_events(tpl, found)
+    for event in logic.EVENTS.values():
+        for src in event["sources"]:
+            _negated_events(src["requirement"], found)
+    _negated_events(data.game.VICTORY_REQUIREMENT, found)
+    for region in logic.REGIONS.values():
+        for area in region["areas"].values():
+            for node in area["nodes"].values():
+                for key in ("is_unlocked", "requirement_to_activate"):
+                    if key in node:
+                        _negated_events(node[key], found)
+    return found
 
 
-def unreachable_report(data: Data) -> tuple[bool, list[dict], list[str]]:
-    """(goal reachable, unreachable locations, lines of the report)."""
-    ev = _all_items_no_tricks(data)
-    reached = ev.run()
-    goal = ev.sat(data.game.VICTORY_REQUIREMENT)
-    missing = [loc for loc in data.locations.LOCATIONS
-               if (loc["region"], loc["area"], loc["node"]) not in reached]
+@pytest.fixture(scope="session")
+def world(data):
+    return playthrough_sim.World(data)
+
+
+def test_every_dangerous_event_has_an_escape_requirement_and_gates_its_node(data):
+    events = data.logic.EVENTS
+    dangerous = _events_occurring_negated(data)
+    assert len(dangerous) == 22
+    assert {name for name, ev in events.items() if "escape_requirement" in ev} == dangerous
+    node_of = {}
+    for name in dangerous:
+        ev = events[name]
+        assert ev["kind"] == "db"
+        assert [tuple(s["node"]) for s in ev["sources"]] == [tuple(ev["node"])]
+        node_of[tuple(ev["node"])] = name
+    gated = collections.Counter()
+    for conn in data.logic.CONNECTIONS:
+        into = node_of.get(tuple(conn["to"]))
+        assert conn.get("escape_gate") == into, conn
+        if into is not None:
+            req = conn["requirement"]
+            assert set(req) == {"and"} and len(req["and"]) == 2
+            assert req["and"][1] == events[into]["escape_requirement"]
+            gated[into] += 1
+    assert set(gated) == dangerous, "every dangerous event node must have at least one gated connection"
+
+
+def _event_atoms(req: dict, out: set[str]) -> set[str]:
+    if "and" in req or "or" in req:
+        for sub in req.get("and", []) + req.get("or", []):
+            _event_atoms(sub, out)
+    else:
+        assert req["type"] in ("item", "event", "damage"), req  # tricks/misc/version are folded into constants
+        if req["type"] == "event":
+            assert not req.get("negate"), req
+            out.add(req["name"])
+    return out
+
+
+def test_escape_requirements_are_cycle_free(world, data):
+    """No escape_requirement contains its own event or an event that is only reachable after it
+    (all items, no tricks; with all escape gates and without)."""
+    full = world.all_items()
+    for gated in (True, False):
+        _, all_events, _, _ = world.reach(full, gated=gated)
+        for name, node in sorted(world.dangerous.items()):
+            atoms = _event_atoms(data.logic.EVENTS[name]["escape_requirement"], set())
+            assert name not in atoms
+            _, without, _, _ = world.reach(full, gated=gated, blocked_nodes={node}, blocked_events={name})
+            only_after = {y for y in atoms if y in all_events and y not in without}
+            assert not only_after, f"{name}: escape requirement uses events only reachable after it: {only_after}"
+    # the cases named in F-02 really had to be inlined
+    inlined = {n: data.logic.EVENTS[n]["escape_inlined_events"] for n in world.dangerous}
+    assert "Proving Grounds Barrier Removed" in inlined["Gandrayda"]
+    assert inlined["Turbine Chamber Bomb Part 1"]
+    assert inlined["Ready Room Briefing"]
+
+
+# Control values (no tricks): the item that is missing after the trigger when the node was entered with minimal items.
+TRAPS = {
+    "Gateway Green Lock": "Grapple Lasso",
+    "Imperial Crypt Ice Floor": "Screw Attack",
+    "Xenoresearch Power Outage": "Seeker Missile",
+    "Gandrayda": "Grapple Voltage",
+}
+NO_TRAP = ("Aurora Chamber (Elysia) Vaccine", "Spire Bomb Leviathan Shield")
+GREEDY_ORDERS = 12
+
+
+def _entry_state(world, event: str, inv: dict) -> tuple[bool, set]:
+    """Can the event node be entered with ``inv`` (before triggering it), and which events are reached by then."""
+    node = world.dangerous[event]
+    reached, events, _, _ = world.reach(inv, gated=False, blocked_nodes={node}, blocked_events={event})
+    enter = any(c[0] in reached and c[1] == node and c[4](inv, events, False) for c in world.conns)
+    return enter, events
+
+
+def _minimal_entry_inventories(world, event: str) -> list[dict]:
+    """Starting items + a minimal part of the pool (greedy removal of single copies in fixed shuffled orders)."""
+    start = list(world.data.items.STARTING_ITEMS)
+    pool = sorted(world.pool(), key=lambda r: r["name"])
+    found = []
+    for seed in range(GREEDY_ORDERS):
+        order = list(range(len(pool)))
+        random.Random(seed).shuffle(order)
+        keep = set(order)
+        for i in order:
+            trial = keep - {i}
+            if _entry_state(world, event, world.inventory(start + [pool[j] for j in sorted(trial)])[0])[0]:
+                keep = trial
+        found.append(world.inventory(start + [pool[j] for j in sorted(keep)])[0])
+    return found
+
+
+def test_escape_control_values(world):
+    resources = sorted(world.all_items())
+    for event, missing in TRAPS.items():
+        trapped = 0
+        for inv in _minimal_entry_inventories(world, event):
+            enter, events = _entry_state(world, event, inv)
+            assert enter
+            if world.escape_ok(event, inv, events):
+                continue  # this minimal route already brings the item along
+            trapped += 1
+            fixes = []
+            for res in resources:
+                more = {**inv, res: inv.get(res, 0) + 1}
+                if world.escape_ok(event, more, _entry_state(world, event, more)[1]):
+                    fixes.append(res)
+            assert fixes == [missing], f"{event}: with minimal items the escape needs {fixes}, expected {missing}"
+        assert trapped, f"{event}: no minimal entry inventory is trapped"
+    for event in NO_TRAP:
+        for inv in _minimal_entry_inventories(world, event):
+            enter, events = _entry_state(world, event, inv)
+            assert enter and world.escape_ok(event, inv, events), f"{event} must not be a trap"
+    # Flux Control Tunnel Cover: Spider Ball or X-Ray Visor
+    event = "Flux Control Tunnel Cover"
+    full = world.all_items()
+    for drop, ok in ((("Spider Ball",), True), (("X-Ray Visor",), True), (("Spider Ball", "X-Ray Visor"), False)):
+        inv = {k: 0 if k in drop else v for k, v in full.items()}
+        enter, events = _entry_state(world, event, inv)
+        assert enter
+        assert world.escape_ok(event, inv, events) is ok, f"{event} without {drop}"
+
+
+# ---------------------------------------------------------------- 6. reachability (replaces the T03 evaluator)
+def reachability_report(world, data) -> tuple[bool, list[dict], list[str], list[str]]:
+    """All items (pool + start), no tricks, AP logic with escape gates ("before event" = satisfied)."""
+    reached, events, _, _ = world.reach(world.all_items())
+    goal = GOAL_EVENT in events
+    missing = [loc for loc in data.locations.LOCATIONS if world.loc_node[loc["id"]] not in reached]
+    missing_dangerous = sorted(set(world.dangerous) - events)
     lines = [
-        "Reachability: all items (pool + start + vanilla item of location 0), no tricks, "
-        "'before event' = not satisfied, 'no item' = not satisfied",
+        "Reachability: all items (pool + start), no tricks, escape gates on, 'before event' = satisfied",
         f"Goal event {GOAL_EVENT!r} reachable from {data.game.START_LOCATION}: {goal}",
-        f"Locations reachable: {99 - len(missing)} / 99, unreachable: {len(missing)}",
+        f"Locations reachable: {99 - len(missing)} / 99",
+        f"Dangerous events reachable: {len(world.dangerous) - len(missing_dangerous)} / {len(world.dangerous)}",
     ]
     lines += [f"  unreachable: id {loc['id']:>2}  {loc['name']}" for loc in missing]
-    # Information only: the same check if every "before <event>" requirement counted as satisfied.
-    optimistic = _all_items_no_tricks(data, before_event=True)
-    reached_opt = optimistic.run()
-    missing_opt = [loc["id"] for loc in data.locations.LOCATIONS
-                   if (loc["region"], loc["area"], loc["node"]) not in reached_opt]
-    lines.append(f"Information: with every 'before event' counted as satisfied, unreachable ids: {missing_opt}")
-    return goal, missing, lines
+    lines += [f"  unreachable dangerous event: {name}" for name in missing_dangerous]
+    return goal, missing, missing_dangerous, lines
 
 
-def test_goal_reachable_with_all_items_no_tricks(data, capsys):
-    goal, missing, lines = unreachable_report(data)
+# Its only entry needs the tricks "Single Room Out of Bounds" and "Bomb Jump" (level 3), with and without gates.
+TRICK_ONLY_DANGEROUS = ["Gel Processing Site Out of Bounds"]
+
+
+def test_everything_reachable_with_all_items_no_tricks_and_gates(world, data, capsys):
+    goal, missing, missing_dangerous, lines = reachability_report(world, data)
     with capsys.disabled():
         print("\n" + "\n".join(lines))
-    assert goal, f"{GOAL_EVENT} not reachable with all items and no tricks"
-    # An empty or non-empty list of unreachable locations is not a failure; it only has to be reported.
-    assert isinstance(missing, list)
+    assert goal
+    assert not missing
+    assert missing_dangerous == TRICK_ONLY_DANGEROUS
+    # the gates take nothing away: without them the same events are reached
+    full = world.all_items()
+    assert world.reach(full)[1] == world.reach(full, gated=False)[1]
+    # with every trick enabled all 22 dangerous events are reachable through the gates
+    all_tricks = playthrough_sim.World(data, tricks={t: 5 for t in data.game.TRICKS})
+    assert set(world.dangerous) <= all_tricks.reach(full)[1]
+    # location 0 is no AP location and not needed for that
+    assert data.locations.UNPATCHED_LOCATION["id"] not in world.loc_node
 
 
-# ---------------------------------------------------------------- 6. no randovania import
+# ---------------------------------------------------------------- 7. playthrough simulator
+SIM_SEEDS = range(100)  # fixed seed range; the run takes about 10 s
+
+
+def test_logic_following_player_wins_every_seed(world, capsys):
+    """AP-style random fill + a player who follows the logic. He triggers allowed dangerous events at random,
+    half of the time even before collecting what is reachable (eager = 0.5)."""
+    result = playthrough_sim.simulate(world, SIM_SEEDS, eager=0.5)
+    with capsys.disabled():
+        print(f"\nPlaythrough simulator, seeds {SIM_SEEDS.start}-{SIM_SEEDS.stop - 1}: {result['summary']}")
+    assert result["summary"].get("fill_failed", 0) == 0
+    assert result["summary"]["won"] == len(SIM_SEEDS), result["failures"][:3]
+    assert result["summary"]["all_99_collected"] == len(SIM_SEEDS)
+
+
+def test_simulator_detects_traps_without_gates(world):
+    """Control: without the escape gate the same player gets trapped."""
+    ungated = playthrough_sim.World(world.data)
+    ungated.escape_ok = lambda event, inv, evs: True
+    result = playthrough_sim.simulate(ungated, range(10), eager=1.0)
+    assert result["summary"]["won"] < 10
+
+
+# ---------------------------------------------------------------- 8. no randovania import
 def _assert_no_imports(path: Path) -> None:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in ast.walk(tree):
@@ -395,9 +516,9 @@ def test_committed_data_package_does_not_import_randovania():
 
 
 if __name__ == "__main__":  # python apworld/tools/test_convert_db.py -> print the reachability report only
-    sys.path.insert(0, str(TOOLS_DIR))
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
         _run_converter(Path(tmp), "1")
-        print("\n".join(unreachable_report(Data(Path(tmp)))[2]))
+        generated = Data(Path(tmp))
+        print("\n".join(reachability_report(playthrough_sim.World(generated), generated)[3]))
