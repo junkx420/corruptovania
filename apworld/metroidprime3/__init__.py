@@ -10,6 +10,7 @@ from typing import Any, ClassVar
 
 from BaseClasses import Item
 from worlds.AutoWorld import WebWorld, World
+from worlds.LauncherComponents import Component, Type, components, launch
 
 from .data import game as game_data
 from .items import (BASE_ID, FILLER_ITEM_NAME, GAME_NAME, ITEM_OFFSETS, RECORDS, MP3Item, classification,
@@ -19,6 +20,16 @@ from .options import MP3Options
 from .regions import GOAL_EVENT, create_regions, starting_resources
 
 SLOT_DATA_VERSION = 1
+
+
+def launch_client(*args: str) -> None:
+    """Launcher-Komponente "Metroid Prime 3 Client" (T06, docs/AP_CLIENT.md)."""
+    from .client import launch as client_main
+    launch(client_main, name="MetroidPrime3Client", args=args)
+
+
+components.append(Component("Metroid Prime 3 Client", func=launch_client, component_type=Type.CLIENT,
+                            game_name=GAME_NAME, supports_uri=True))
 
 
 class MP3Web(WebWorld):
