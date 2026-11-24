@@ -34,6 +34,9 @@ public class Configuration
 
 	public bool require_ship_missile;
 
+	// Archipelago mode (SPEC E10, E15): every pickup only displays its item, missile-required is forced off.
+	public bool ap_mode;
+
 	public static Configuration get_configuration(string[] cli_args)
 	{
 		Configuration configuration = new Configuration();
@@ -50,6 +53,7 @@ public class Configuration
 		configuration.phaaze_skip = false;
 		configuration.require_launcher = false;
 		configuration.require_ship_missile = false;
+		configuration.ap_mode = false;
 		configuration.starting_items_type = StartingItemsType.OriginalWithCommand;
 		configuration.starting_location_type = StartingLocationType.Norion;
 		for (int i = 0; i < cli_args.Length; i++)
@@ -93,6 +97,10 @@ public class Configuration
 			else if (cli_args[i] == "--require-ship-missile" || cli_args[i] == "-require-ship-missile")
 			{
 				configuration.require_ship_missile = true;
+			}
+			else if (cli_args[i] == "--ap-mode" || cli_args[i] == "-ap-mode")
+			{
+				configuration.ap_mode = true;
 			}
 			else if (cli_args[i] == "--starting-items")
 			{
@@ -143,6 +151,12 @@ public class Configuration
 				configuration.starting_area = Convert.ToUInt64("0x" + cli_args[i + 3].ToString().Trim(), 16);
 			}
 		}
+		if (configuration.ap_mode)
+		{
+			// SPEC E15: in the AP patch missile-required is off; the client enforces the launcher lock.
+			configuration.require_launcher = false;
+			configuration.require_ship_missile = false;
+		}
 		return configuration;
 	}
 
@@ -162,6 +176,8 @@ public class Configuration
 		Console.WriteLine("--skip-phaaze                       Flying to Phaaze brings you to the end cutscene.");
 		Console.WriteLine("--require-launcher                  Missile Launcher will be required to fire missiles.");
 		Console.WriteLine("--require-ship-missile              The main Ship Missile item will be required to use ship missiles.");
+		Console.WriteLine("--ap-mode                           Archipelago: pickups only show their item and give nothing,");
+		Console.WriteLine("                                    missile-required is turned off.");
 		Console.WriteLine("--random-door-colors                Randomize the colors of doors");
 		Console.WriteLine("--random-welding-colors             Randomize the beam colors during welding puzzles");
 		Console.WriteLine("--starting-items ITEMS_TYPE         The items the player will start with");

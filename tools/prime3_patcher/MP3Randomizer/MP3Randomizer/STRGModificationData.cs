@@ -39,6 +39,8 @@ public class STRGModificationData
 		list.Add(STRGModification.import(12379739850550345735uL, new LanguageModification[1] { LanguageModification.import(Language.English, new string[1] { "Hypermode acquired!" }) }));
 		list.Add(STRGModification.import(12379739850550345736uL, new LanguageModification[1] { LanguageModification.import(Language.English, new string[1] { "Progressive Missile acquired!" }) }));
 		list.Add(STRGModification.import(12379739850550345737uL, new LanguageModification[1] { LanguageModification.import(Language.English, new string[1] { "Progressive Beam acquired!" }) }));
+		// Archipelago placeholder text. Only lands in a pak if a pickup references it (ItemName.APItem).
+		list.Add(STRGModification.import(Item.AP_ITEM_MEMO_ID, new LanguageModification[1] { LanguageModification.import(Language.English, new string[1] { Item.AP_ITEM_TEXT }) }));
 		if (add_hyper_hints)
 		{
 			list.Add(STRGModification.import(17148605460584509170uL, new LanguageModification[1] { LanguageModification.import(Language.English, new string[3]

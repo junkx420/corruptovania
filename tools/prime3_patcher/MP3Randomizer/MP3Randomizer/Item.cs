@@ -4,6 +4,11 @@ namespace MP3Randomizer;
 
 public class Item
 {
+	// Synthetic STRG ID for the HUD text of ItemName.APItem (pattern 0xABCDABCDABCD00xx, next free after ...0009).
+	public const ulong AP_ITEM_MEMO_ID = 0xABCDABCDABCD000AuL;
+
+	public const string AP_ITEM_TEXT = "Archipelago-Item";
+
 	public byte[] item_type;
 
 	public byte[] capacity;
@@ -802,6 +807,29 @@ public class Item
 			item.scan = new byte[8] { 103, 230, 52, 4, 252, 251, 19, 190 };
 			item.memo = new byte[8] { 242, 85, 167, 4, 206, 96, 167, 153 };
 			item.streamed_audio = new byte[8] { 229, 149, 150, 228, 252, 132, 162, 155 };
+			item.is_progressive = false;
+			item.progressive_item_types = new ItemType[0];
+			item.progressive_ids = new ushort[0];
+			item.conversion_start_type = new byte[0];
+			item.conversion_start_ids = new ushort[0];
+			item.conversion_end_type = new byte[0];
+			item.conversion_end_ids = new ushort[0];
+			break;
+		case ItemName.APItem:
+			// Archipelago placeholder (SPEC E10, E14): no inventory item, amount/capacity 0/0.
+			// Visuals reuse the static Energy Cell model (CMDL), no scan, the expansion jingle and
+			// a dedicated HUD text ("Archipelago-Item", STRG AP_ITEM_MEMO_ID).
+			item.item_type = new byte[4] { 255, 255, 255, 255 };
+			item.capacity = new byte[4];
+			item.percent = new byte[4];
+			item.amount = new byte[4];
+			item.model = new byte[8] { 49, 239, 21, 81, 175, 13, 48, 216 };
+			item.pickup_effect = new byte[8] { 107, 203, 186, 121, 44, 234, 67, 50 };
+			item.character = new byte[8] { 255, 255, 255, 255, 255, 255, 255, 255 };
+			item.default_animation = new byte[4] { 255, 255, 255, 255 };
+			item.scan = new byte[8] { 255, 255, 255, 255, 255, 255, 255, 255 };
+			item.memo = Conversion.u64_to_8b(AP_ITEM_MEMO_ID);
+			item.streamed_audio = new byte[8] { 168, 50, 252, 12, 116, 101, 31, 36 };
 			item.is_progressive = false;
 			item.progressive_item_types = new ItemType[0];
 			item.progressive_ids = new ushort[0];

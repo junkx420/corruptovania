@@ -1535,6 +1535,7 @@ public class MP3Dependencies
 		dictionary[12379739850550345735uL] = new Dependency[0];
 		dictionary[12379739850550345736uL] = new Dependency[0];
 		dictionary[12379739850550345737uL] = new Dependency[0];
+		dictionary[Item.AP_ITEM_MEMO_ID] = new Dependency[0];
 		dictionary[520877543450287337uL] = new Dependency[1] { Dependency.import(16736787680862962376uL, "TXTR") };
 		dictionary[16736787680862962376uL] = new Dependency[0];
 		dictionary[5047729426257305854uL] = new Dependency[1] { Dependency.import(2116349832385564692uL, "TXTR") };

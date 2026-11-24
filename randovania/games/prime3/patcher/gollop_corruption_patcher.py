@@ -4,6 +4,7 @@ import hashlib
 from typing import TYPE_CHECKING
 
 from randovania.game_description.resources.item_resource_info import ItemResourceInfo
+from randovania.games.prime3.patcher.corruption_items import AP_ITEM
 
 if TYPE_CHECKING:
     from randovania.game_description.db.area_identifier import AreaIdentifier
@@ -81,7 +82,8 @@ LETTER_TO_ITEM_MAPPING = {
     "x": ["Boost Ball"],
     "y": ["Spider Ball"],
     "z": ["Hypermode"],
-    # "A": ["HyperModeBeam"],
+    # "A" was the unused slot HyperModeBeam; the patcher decodes it as ItemName.APItem.
+    "A": [AP_ITEM],
     "B": ["Hyper Missile"],
     "C": ["Hyper Ball"],
     "D": ["Hyper Grapple"],
@@ -126,6 +128,18 @@ LETTER_TO_ITEM_MAPPING = {
     "?": ["Missile Expansion", "Ship Missile Expansion", "Missile Expansion"],
 }
 ITEM_NAME_TO_LETTER_MAPPING = {items[0]: letter for letter, items in LETTER_TO_ITEM_MAPPING.items() if len(items) == 1}
+
+# MP3Randomizer flag for Archipelago seeds (SPEC E10, E15): every pickup only shows its item (item_type FF FF FF FF,
+# 0/0) and missile-required is forced off. Pass it in addition to the usual flags.
+AP_MODE_FLAG = "--ap-mode"
+
+
+def ap_mode_arguments(ap_mode: bool) -> tuple[str, ...]:
+    """Extra MP3Randomizer arguments for the Archipelago mode; empty without it, so normal exports stay unchanged."""
+    if ap_mode:
+        return (AP_MODE_FLAG,)
+    return ()
+
 
 STARTING_ITEMS_ORDER = [
     "EnergyAmount",

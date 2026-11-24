@@ -127,6 +127,9 @@ public class MP3Permalink
 			case 'z':
 				list.Add(ItemName.HyperModeTank);
 				break;
+			case 'A':
+				list.Add(ItemName.APItem);
+				break;
 			case 'B':
 				list.Add(ItemName.HyperMissile);
 				break;

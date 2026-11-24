@@ -47,7 +47,7 @@ public class MP3Randomizer
 		bool is_intro_skipped = ((configuration.starting_location_type != StartingLocationType.Olympus) ? true : false);
 		Patches patches = new Patches();
 		MP3Inventory inventory = MP3Inventory.create_inventory(configuration.starting_items_type, configuration.starting_items_custom);
-		patches.add_patches(rng, PickupLocations.get_pickup_locations(), FakePickupLocations.get_fake_pickup_locations(), array, inventory, StartingLocationId.get_starting_location(configuration.starting_location_type, configuration.starting_world, configuration.starting_area), is_intro_skipped, configuration.random_door_colors, configuration.random_welding_colors, configuration.add_fast_flying, configuration.phaaze_skip, configuration.require_launcher, configuration.require_ship_missile);
+		patches.add_patches(rng, PickupLocations.get_pickup_locations(), FakePickupLocations.get_fake_pickup_locations(), array, inventory, StartingLocationId.get_starting_location(configuration.starting_location_type, configuration.starting_world, configuration.starting_area), is_intro_skipped, configuration.random_door_colors, configuration.random_welding_colors, configuration.add_fast_flying, configuration.phaaze_skip, configuration.require_launcher, configuration.require_ship_missile, configuration.ap_mode);
 		string[] pak_filenames = new string[9] { "FrontEnd.pak", "Metroid1.pak", "Metroid3.pak", "Metroid4.pak", "Metroid5.pak", "Metroid7.pak", "Metroid8.pak", "Logbook.pak", "MiscData.pak" };
 		string[] array2 = new string[10] { "Metroid1.pak", "Metroid3.pak", "Metroid4.pak", "Metroid5.pak", "Metroid6.pak", "Metroid7.pak", "Metroid8.pak", "FrontEnd.pak", "UniverseArea.pak", "Worlds.pak" };
 		string[] source = new string[1] { "Metroid8.pak" };

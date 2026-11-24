@@ -8,3 +8,6 @@ ENERGY_CELL_MODEL = "Energy Cell"
 ENERGY_CELL_ITEMS = [f"Fuse{i}" for i in range(1, 10)]
 ENERGY_CELL_TOTAL_ITEM = "Fuses"
 PERCENTAGE = "ItemPercentage"
+
+# Archipelago (T16): neutral placeholder for an item of another world. Gives nothing locally.
+AP_ITEM = "Archipelago Item"

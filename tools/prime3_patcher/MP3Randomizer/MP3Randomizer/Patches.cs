@@ -265,7 +265,7 @@ public class Patches
 		}
 	}
 
-	public void add_patches(Random rng, PickupLocation[] pickup_locations, FakePickup[] fake_pickup_locations, ItemName[] item_list, MP3Inventory inventory, StartingArea starting_area, bool is_intro_skipped, bool random_door_colors, bool random_welding_colors, bool add_fast_flying, bool phaaze_skip, bool require_launcher, bool require_ship_missile)
+	public void add_patches(Random rng, PickupLocation[] pickup_locations, FakePickup[] fake_pickup_locations, ItemName[] item_list, MP3Inventory inventory, StartingArea starting_area, bool is_intro_skipped, bool random_door_colors, bool random_welding_colors, bool add_fast_flying, bool phaaze_skip, bool require_launcher, bool require_ship_missile, bool ap_mode = false)
 	{
 		FrontEndPatches.patch_attract_videos(this);
 		StartPatches.add_reveal_map_patch(this, starting_area.get_area_id());
@@ -315,7 +315,7 @@ public class Patches
 		IftPatches.add_ift_patches(this);
 		CinematicSkipPatches.add_cinematic_skip_patches(this);
 		Dictionary<ulong, Dependency[]> file_dependencies = MP3Dependencies.get_file_dependencies();
-		PickupPatches.add_pickup_patches(this, pickup_locations, item_list, require_launcher, require_ship_missile, file_dependencies);
+		PickupPatches.add_pickup_patches(this, pickup_locations, item_list, require_launcher, require_ship_missile, file_dependencies, ap_mode);
 		PickupPatches.add_fake_pickup_patches(this, fake_pickup_locations, item_list, file_dependencies);
 		PickupPatches.add_special_pickup_patches(this);
 		if (random_door_colors)

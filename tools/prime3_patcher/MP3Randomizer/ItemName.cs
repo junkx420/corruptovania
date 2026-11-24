@@ -56,5 +56,7 @@ public enum ItemName
 	VioletTranslator,
 	AmberTranslator,
 	EmeraldTranslator,
-	CobaltTranslator
+	CobaltTranslator,
+	// Archipelago: neutral placeholder for an item that belongs to another world. Gives nothing locally.
+	APItem
 }

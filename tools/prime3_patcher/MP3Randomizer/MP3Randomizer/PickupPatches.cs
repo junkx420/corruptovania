@@ -4,7 +4,7 @@ namespace MP3Randomizer;
 
 public class PickupPatches
 {
-	public static void add_pickup_patches(Patches patches, PickupLocation[] pickup_locations, ItemName[] item_list, bool require_launcher, bool require_ship_missile, Dictionary<ulong, Dependency[]> file_dependencies)
+	public static void add_pickup_patches(Patches patches, PickupLocation[] pickup_locations, ItemName[] item_list, bool require_launcher, bool require_ship_missile, Dictionary<ulong, Dependency[]> file_dependencies, bool display_only = false)
 	{
 		PickupLocation pickupLocation = new PickupLocation();
 		Dictionary<ulong, List<byte[]>> dictionary = new Dictionary<ulong, List<byte[]>>();
@@ -27,6 +27,10 @@ public class PickupPatches
 					dictionary[pickupLocation.mrea_id] = new List<byte[]>();
 				}
 				Item item = Item.get_item_data(item_list[j]);
+				if (display_only)
+				{
+					apply_display_only(item);
+				}
 				List<byte> list = new List<byte>();
 				byte[] character = item.character;
 				foreach (byte item2 in character)
@@ -280,6 +284,23 @@ public class PickupPatches
 				patches.object_addition_patches.Add(ScriptObjectAdditionPatch.import(new ulong[1] { pickupLocation.mrea_id }, new uint[1], new ScriptObject[3] { scriptObject8, scriptObject9, scriptObject10 }));
 			}
 		}
+	}
+
+	// Archipelago "display only" (SPEC E10): the pickup keeps model, scan, jingle and HUD text of its item,
+	// but gives nothing: item_type FF FF FF FF, amount/capacity 0/0, no progressive or main-required relays.
+	// The pickup still sets its memory relay byte, which the AP client reads as location check (E8).
+	public static void apply_display_only(Item item)
+	{
+		item.item_type = new byte[4] { 255, 255, 255, 255 };
+		item.capacity = new byte[4];
+		item.amount = new byte[4];
+		item.is_progressive = false;
+		item.progressive_item_types = new ItemType[0];
+		item.progressive_ids = new ushort[0];
+		item.conversion_start_type = new byte[0];
+		item.conversion_start_ids = new ushort[0];
+		item.conversion_end_type = new byte[0];
+		item.conversion_end_ids = new ushort[0];
 	}
 
 	public static void add_special_pickup_patches(Patches patches)
