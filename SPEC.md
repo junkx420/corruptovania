@@ -1,6 +1,6 @@
 # SPEC – Metroid Prime 3 Archipelago (Entwurf)
 
-Stand: 2026-11-23 · Status: **E1–E4, E7–E16 entschieden (E11 unter Vorbehalt T15); E5, E6 offen**
+Stand: 2026-11-23 · Status: **E1–E19 entschieden (E11 unter Vorbehalt T15/T19)**
 
 ## 1. Ziel
 
@@ -75,9 +75,9 @@ Bausteine:
 | E2 | Zielplattform/Spielversion | **Nur Dolphin**, nur die Version, die der Patcher heute unterstützt. T01: implizit NTSC-U RM3E01. PAL RM3P01 funktioniert ohne MP3Update/Deflicker. Trilogy geht nicht. **PrimeHack** (Dolphin-Fork mit Maus-Steuerung) gilt als unterstützter Emulator, wird ab T10 zum Testen genutzt | entschieden 2026-11-23 |
 | E3 | MVP-Umfang | **Nur Item-Shuffle, Standard-Startort, festes Ziel Dark Samus.** Startort, Trick-Level, DeathLink erst in F9/F10 | entschieden 2026-11-23 |
 | E4 | Repo-Hosting | **Fork `junkx420/corruptovania`, Arbeitsbranch `archipelago`** (Standardbranch). `main` bleibt Spiegel von Upstream. APWorld liegt im selben Repo unter `apworld/metroidprime3/`, Konverter unter `apworld/tools/` | entschieden 2026-11-23 |
-| E5 | Lizenz der APWorld: GPLv3 (wegen abgeleiteter Logikdaten) | GPLv3 | offen |
+| E5 | Lizenz der APWorld | **GPLv3** (abgeleitete Logikdaten aus Corruptovania) | entschieden 2026-11-24 |
 | E7 | MVP-Region: PAL RM3P01 (vorhandenes ISO, ohne MP3Update) oder NTSC-U RM3E01 (Patcher-Zielversion, ISO fehlt)? | **PAL RM3P01 für den MVP.** NTSC-U nachziehen, sobald ein Dump vorliegt (Adressen anderer Regionen aus Code, nicht live geprüft) | entschieden 2026-11-23 |
-| E6 | Client-Basis: AP-`CommonClient` + `dolphin-memory-engine` (wie MP1-APWorld) oder Corruptovania-Connector wiederverwenden? | AP-CommonClient + dolphin-memory-engine, Adressen aus Corruptovania-Connector übernehmen | offen |
+| E6 | Client-Basis | **AP-`CommonClient` + `dolphin-memory-engine`**, Adressen aus docs/AP_MEMORY_MAP.md; Client liegt in der APWorld (`apworld/metroidprime3/client/`) | entschieden 2026-11-24 |
 | E8 | Location-Checks | Flag-Block der Welt (1024 Byte im Heap): Signatur-Suche nach Laden/Weltwechsel, Adresse merken, Signatur bei jeder Abfrage prüfen. Kein DOL-Hook im MVP | angenommen 2026-11-23 (F-01) |
 | E9 | Item-Vergabe | Direktschreiben von Anzahl/Kapazität in `PS + 0x54 + slot*0xC`, nur wenn Spieler ingame (CPlayer-vtable) und `PowerBeam.capacity > 0` | angenommen 2026-11-23 (F-01) |
 | E10 | Remote-Items | Alle 99 Orte geben lokal nichts (`item_type FF FF FF FF`, 0/0). Auch eigene Items kommen vom Server, `items_handling = 0b111` | angenommen 2026-11-23 (F-01) |
@@ -89,3 +89,4 @@ Bausteine:
 | E16 | DOL-Hook | Nur falls T11 ein Item findet, das per Direktschreiben nicht wirkt | angenommen; T11: Bedingung nicht erfüllt, kein Hook im MVP |
 | E17 | Ort 0 / Pool-Größe | Ort 0 (nie gepatcht) ist laut DB erst nach „Aurora Unit 313“ erreichbar, sein Vanilla-Item Hypermode ist für die Logik nutzlos. **Hypermode kommt in den AP-Pool, dafür eine Missile Expansion raus; Pool bleibt 99.** Ort 0 ist in AP keine Location | revidiert 2026-11-24 (F-02) |
 | E18 | „before event X“ | Gilt in der Logik als erfüllt. Gefährlich ist jedes Event, das irgendwo negiert vorkommt (aus den Daten abgeleitet). Der Konverter berechnet je gefährlichem Event ein `escape_requirement` (Rückweg vom Event-Knoten zum Schiff im Zustand „nach X“, zyklenfrei: Events, die X voraussetzen, werden durch ihr eigenes Requirement ersetzt) und **hängt es an jede Verbindung in den Event-Knoten** (Betreten löst das Event aus). Die APWorld braucht dafür keine Sonderlogik. Zu frühes Auslösen behebt der Spieler durch Neuladen. Kein Patcher-Eingriff im MVP | angenommen 2026-11-24 (F-02 + Nachprüfung) |
+| E19 | Prüfung der Flag-Tabelle | 89 Orte sicher, 10 SpecialFunction-Orte „wahrscheinlich“ (T12). Statt alle 10 live anzulaufen: Der Client hat einen Lern-/Logmodus (steigt ItemPercentage, protokolliert er neu gesetzte Flag-Bytes) und meldet Abweichungen zur Tabelle; Prüfung erfolgt in Playtests. T13 prüft nur leicht erreichbare Orte | entschieden 2026-11-24 |
