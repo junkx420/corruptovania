@@ -75,6 +75,14 @@ ChecksFinder:
 Result T04: 10 solo seeds in a row without errors (~0.4 s generation each, ~4 s with startup), 2-player seed
 MP3 + ChecksFinder without errors (124 items).
 
+Result T25 (location rules E22, default options): `Generate.py --seed 1..100` solo: 99 ok, seed 51 fails with
+`FillError` ("No more spots to place 40 items"); 20 seeds MP3 + ChecksFinder (`--seed 1001..1020`): 20/20 ok.
+In-process fill (`distribute_items_restrictive`, seeds 1–1200): 4 failures (51, 611, 990, 1096) with the location
+rules, NORULES without them. Cause: the start reaches only 3 locations now (4, 11, 17; location 84 is a dead end
+without Boost Ball or Spider Ball), and Archipelago's swap fill runs out of early spots. Not fixed in T25 (needs
+`__init__.py`); experiment: one local early Grapple Lasso (`multiworld.local_early_items`) removes all failures
+(EARLY).
+
 Since T05b the output ZIP contains a **patch file** `<output name>.apmp3` per MP3 slot (e.g.
 `AP_38224278823687041413_P2_Samus.apmp3`) next to `.archipelago` and the spoiler. Format: `AP_PATCH_TOOL.md` section 2.3.
 The player builds their ISO from it (section 6).
@@ -99,9 +107,9 @@ The own tests (`apworld/metroidprime3/test/`) only run in the Archipelago clone 
 | File | Checks |
 |---|---|
 | `test_ids.py` | 99 locations with ID = base + pickup index, location 0 missing; item IDs against a fixed snapshot; every data item has an ID; pool = 99 items according to `data/items.py` incl. Hypermode (48 Missile Expansions); starting items precollected; `slot_data` JSON-serialisable; no `randovania` imports |
-| `test_logic.py` | rule semantics (and/or, "before event" = satisfied, trick = never, Progressive Beam, launcher lock, Energy Cells, damage); with all items all 99 locations and the goal are reachable; the only missing event is "Gel Processing Site Out of Bounds" (only via trick, T20); **node lock**: in 70 inventories (all minus one item each, 40 random) the `escape_requirement` of every reachable dangerous event node holds there; control value Green Lock ↔ Grapple Lasso; comparison of reachable nodes/events with `playthrough_sim.World.reach(logic=True)` for 40 random inventories |
+| `test_logic.py` | rule semantics (and/or, "before event" = satisfied, trick = never, Progressive Beam, launcher lock, Energy Cells, damage); with all items all 99 locations and the goal are reachable; the only missing event is "Gel Processing Site Out of Bounds" (only via trick, T20); **node lock**: in 70 inventories (all minus one item each, 40 random) the `escape_requirement` of every reachable dangerous event node holds there; control value Green Lock ↔ Grapple Lasso; comparison of reachable nodes/events/locations with `playthrough_sim.World.reach(logic=True)` for 70 inventories; **dead-end locations (E22)**: location rules = data (22 non-trivial), the three Leviathan cores are reachable without their exit item but the location is not, the exit item cannot be placed in its own core |
 | `test_output.py` | `.apmp3` (T05b): solo seed, MP3 + ChecksFinder and MP3 + ChecksFinder + MP3 → exactly one `.apmp3` per MP3 slot; 99 locations (1–99), own items = real name, foreign ones (also from the other MP3 slot) = `Archipelago Item`, seed ID = `patcher.seed_id.make_seed_id`; read with the patch tool and with `MP3Container`. Patch tool: `.apmp3` = same data as JSON, 7 error cases, `--dry-run` with `.apmp3`. Launcher helpers (arguments, client arguments from the manifest, output path, tools folder), component recognises `.apmp3`; settings (game ID check); `archipelago.json`, `requirements.txt`, file selection as in "Build APWorlds" |
-| `test_playthrough.py` | 20 solo seeds with Archipelago's fill (`distribute_items_restrictive` + progression balancing); the real AP placement goes to `playthrough_sim.play` (eager 0 and 0.5); the logic-faithful player wins every seed with 99/99 locations |
+| `test_playthrough.py` | 20 solo seeds with Archipelago's fill (`distribute_items_restrictive` + progression balancing); the real AP placement goes to `playthrough_sim.play` (eager 0 and 0.5); the logic-faithful player wins every seed with 99/99 locations and is never trapped (dead-end rule, T25). Control: the same seeds without the location rules, played without the rule, strand the player (T25: 20/20, mostly in location 84, twice in the Pirate Homeworld core) |
 
 Counter-check (once, not as a test): without the node lock in the connections the same player wins only 10 of the
 20 AP seeds. So the playthrough test detects a missing lock.
@@ -135,7 +143,9 @@ ammo without a launcher). Irrelevant for the logic, because expansions are not p
 `logic.REGIONS` becomes a region `"<region> - <area> - <node>"`. Every connection from `logic.CONNECTIONS` becomes an
 entrance (several connections between the same nodes are combined with OR; connections whose rule is constantly
 false are dropped). The node lock (E18) is already part of the connections' `requirement` and is not
-handled separately. The 99 locations are in their pickup node, without a rule of their own.
+handled separately. The 99 locations are in their pickup node; their access rule is the `escape_requirement`
+from `data/locations.py` (E22, T25: the way back from a dead end, e.g. Hyper Ball for the Bryyo Leviathan Core;
+`{"and": []}` for 77 of 99 locations, i.e. no rule). The world compiles it like every requirement, no special logic.
 
 **Events.** Every source of an event in `logic.EVENTS` becomes an event location `Event: <name>` (with several sources
 `Event: <name> [k]`) in the source node, rule = requirement of the source, with a locked event item `<name>` (progression,
@@ -331,7 +341,7 @@ supersedes the "helper programs not in the `.apworld`" notes in sections 6 to 8.
 |---|---|
 | `metroidprime3.apworld` | `apworld/metroidprime3` packed like "Build APWorlds" (same ignore rules as `data/GLOBAL.apignore` of AP 0.6.8, manifest = `archipelago.json` + `compatible_version` 7 + `version` 7) |
 | `metroidprime3-tools-win.zip` | the helper programs the patch tool runs (PAL, no MP3Update/Deflicker), `README.txt`, `THIRD-PARTY-NOTICES.txt`, `licenses/` |
-| `Metroid Prime 3 Corruption.yaml` | example YAML from the Prime3AP repo |
+| `metroidprime3-example.yaml` | example YAML from the Prime3AP repo (asset names have no spaces: GitHub turns them into dots, which would break `SHA256SUMS.txt`) |
 | `SHA256SUMS.txt` | `sha256sum` format over the three files |
 
 ### Build
@@ -359,8 +369,12 @@ Draft on GitHub (the tag is created when the draft is published):
 ```powershell
 gh release create v0.3.0 --repo junkx420/Prime3AP --draft --prerelease --title "Prime3AP 0.3.0 (beta)" `
   --notes-file ..\Prime3AP\release-notes\v0.3.0.md build\release\metroidprime3.apworld `
-  build\release\metroidprime3-tools-win.zip "build\release\Metroid Prime 3 Corruption.yaml" build\release\SHA256SUMS.txt
+  build\release\metroidprime3-tools-win.zip build\release\metroidprime3-example.yaml build\release\SHA256SUMS.txt
 ```
+
+The releases API sometimes answers HTTP 500 (seen on 2026-11-25, also for a one-line body); repeat the call. If
+`gh release create` keeps failing, create the draft with a short body via `gh api`, then `gh release edit --notes-file`
+and `gh release upload`.
 
 Assets of a **draft** are not public: the download URL in `tools.py` only works after publishing. Before that, test with
 `$MP3AP_TOOLS_URL` (local server) or by putting the ZIP into the cache folder.

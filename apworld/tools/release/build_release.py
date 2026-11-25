@@ -6,7 +6,7 @@ Writes into ``--out`` (default ``build/release``):
   component (same ignore rules, manifest = ``archipelago.json`` + ``compatible_version``/``version``),
 - ``metroidprime3-tools-win.zip``: the patch tool's helper programs with licence texts (deterministic: sorted entries,
   fixed timestamps), its SHA-256 must equal ``patcher/tools.py TOOLS_ZIP_SHA256``,
-- the example YAML from the Prime3AP repo (``--example-yaml``), if found,
+- ``metroidprime3-example.yaml``: the example YAML from the Prime3AP repo (``--example-yaml``), if found,
 - ``SHA256SUMS.txt`` over all assets.
 
 All inputs are read from a Git commit (``--ref``, default ``HEAD``) of the Corruptovania repo, so uncommitted work of
@@ -84,6 +84,8 @@ TOOLS_FILES = {
 }
 
 DEFAULT_EXAMPLE_YAML = REPO_ROOT.parent / "Prime3AP" / "examples" / "Metroid Prime 3 Corruption.yaml"
+# Asset name without spaces: GitHub replaces spaces in asset names by dots, which would break SHA256SUMS.txt.
+EXAMPLE_ASSET_NAME = "metroidprime3-example.yaml"
 
 Reader = Callable[[str], bytes]
 
@@ -263,7 +265,7 @@ def build_release(
 
     names = [tools_name, APWORLD_NAME]
     if example_yaml and Path(example_yaml).is_file():
-        target = out / Path(example_yaml).name
+        target = out / EXAMPLE_ASSET_NAME
         target.write_bytes(Path(example_yaml).read_bytes())
         names.append(target.name)
     elif example_yaml:

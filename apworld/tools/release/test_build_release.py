@@ -104,7 +104,8 @@ def test_full_build_and_checks(tmp_path: Path) -> None:
     out = tmp_path / "out"
     logs: list[str] = []
     result = br.build_release("v0.3.0", out, br.WorktreeSource(root), example_yaml=yaml, log=logs.append)
-    assert set(result) == {"metroidprime3-tools-win.zip", "metroidprime3.apworld", "Example.yaml"}
+    assert set(result) == {"metroidprime3-tools-win.zip", "metroidprime3.apworld", "metroidprime3-example.yaml"}
+    assert not any(" " in name for name in result)  # GitHub renames assets with spaces
     sums = (out / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines()
     # sha256sum format, one line per asset, sorted by file name
     assert sums == [f"{hashlib.sha256((out / n).read_bytes()).hexdigest()}  {n}" for n in sorted(result)]
