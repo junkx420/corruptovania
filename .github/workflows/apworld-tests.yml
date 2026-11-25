@@ -1,0 +1,67 @@
+name: APWorld Tests
+
+on:
+  push:
+    branches: [archipelago]
+  pull_request:
+    branches: [archipelago]
+
+permissions:
+  contents: read
+
+jobs:
+  apworld:
+    name: APWorld and Archipelago general tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: corruptovania
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: ArchipelagoMW/Archipelago
+          ref: refs/tags/0.6.8
+          path: archipelago
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            archipelago/requirements.txt
+            archipelago/ci-requirements.txt
+            corruptovania/apworld/metroidprime3/requirements.txt
+      - name: Install Archipelago test dependencies
+        working-directory: archipelago
+        run: |
+          ln -s ../../corruptovania/apworld/metroidprime3 worlds/metroidprime3
+          python -m pip install -r requirements.txt -r ci-requirements.txt -r worlds/metroidprime3/requirements.txt
+      - name: Run APWorld and general tests
+        working-directory: archipelago
+        env:
+          AP_TEST_WORLDS: metroidprime3
+        run: python -m pytest -q -rs -m "world or not world" worlds/metroidprime3/test test/general
+
+  tools:
+    name: APWorld tool tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Randovania's version is derived from Git tags during installation.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements.txt
+      - name: Install Randovania and pytest
+        run: python -m pip install -c requirements.txt -e . pytest pytest-asyncio
+      - name: Run tool tests
+        run: python -m pytest -q -rs apworld/tools

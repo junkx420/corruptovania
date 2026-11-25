@@ -283,3 +283,31 @@ or use a Corruptovania checkout.
 - Ship the patch helper programs (MP3Randomizer, nodtool, wit) with the release or download them (F10/E20).
 - While patching (~40 s) the launcher shows nothing (log only); a progress window is missing.
 - GUI path (file dialog, "Open Patch", double click) only described, not clicked by me.
+
+## CI
+
+The [APWorld Tests workflow](../.github/workflows/apworld-tests.yml) runs on every push to
+`archipelago` and every pull request targeting it. Both jobs use Python 3.12 and a pip cache.
+The Archipelago 0.6.8 job runs `worlds/metroidprime3/test` and `test/general`. Its symlink
+lets tests find the simulator and reference files in the Corruptovania checkout. The tool
+job discovers tests under `apworld/tools` and installs Randovania's base dependencies
+because the converter uses the Randovania database loader.
+
+To reproduce the APWorld job, set up the Archipelago clone and junction or symlink from
+section 1. With its Python 3.12 environment active, run this from the Archipelago root.
+
+```bash
+python -m pip install -r requirements.txt -r ci-requirements.txt -r worlds/metroidprime3/requirements.txt
+AP_TEST_WORLDS=metroidprime3 python -m pytest -q -rs -m "world or not world" worlds/metroidprime3/test test/general
+```
+
+In PowerShell, set `$env:AP_TEST_WORLDS = "metroidprime3"` before the pytest command.
+For the tool job, use a separate Python 3.12 environment and run this from the Corruptovania root.
+
+```bash
+python -m pip install -c requirements.txt -e . pytest pytest-asyncio
+python -m pytest -q -rs apworld/tools
+```
+
+Leave `MP3_PAL_EXTRACTED`, `MP3_PAL_DOL` and `MP3_MEM1_SNAPSHOT` unset
+to reproduce CI's skips. Pytest reports the fixture-dependent skips with `-rs`.
