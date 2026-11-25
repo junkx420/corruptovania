@@ -1,16 +1,14 @@
-"""Speicherzugriff auf Dolphin/PrimeHack (T06, SPEC E6).
+"""Memory access to Dolphin/PrimeHack (T06, SPEC E6).
 
-``MemoryAccess`` kapselt jeden Zugriff auf den Wii-Speicher. Die Spiellogik des Clients benutzt nur diese Klasse.
-Unterklassen ersetzen die vier Primitive ``_hook``, ``_unhook``, ``_is_hooked``, ``_read`` (und ``_write``):
-``DolphinMemory`` spricht über ``dolphin-memory-engine`` mit Dolphin oder PrimeHack, die Tests benutzen einen
-Fake-Speicher (``test/fake_memory.py``).
+``MemoryAccess`` wraps every access to Wii memory. The client logic only uses this class. Subclasses replace the four
+primitives ``_hook``, ``_unhook``, ``_is_hooked``, ``_read`` (and ``_write``): ``DolphinMemory`` talks to Dolphin or
+PrimeHack through ``dolphin-memory-engine``, the tests use a fake memory (``test/fake_memory.py``).
 
-Regeln:
-- Gelesen und geschrieben wird erst, wenn die Game-ID ``RM3P01`` geprüft ist (``connect``). Bei falscher ID wird
-  sofort getrennt und nichts geschrieben.
-- Adressen außerhalb von MEM1/MEM2 werden abgelehnt (``AddressError``), statt Dolphin danach zu fragen.
-- Jeder Fehler des Backends beim Lesen/Schreiben gilt als Verbindungsabbruch (``ConnectionLost``); der Aufrufer
-  verbindet danach neu.
+Rules:
+- Nothing is read or written before the game ID ``RM3P01`` has been checked (``connect``). On a wrong ID the client
+  disconnects at once and writes nothing.
+- Addresses outside MEM1/MEM2 are rejected (``AddressError``) instead of asking Dolphin for them.
+- Any backend error while reading/writing counts as a lost connection (``ConnectionLost``); the caller reconnects.
 """
 
 from __future__ import annotations
@@ -27,30 +25,30 @@ MEM2_SIZE = 0x04000000
 GAME_ID_ADDRESS = 0x80000000
 EXPECTED_GAME_ID = b"RM3P01"  # Metroid Prime 3 Wii PAL (SPEC E7)
 
-SCAN_CHUNK = 0x100000  # 1 MiB je Lesezugriff beim Durchsuchen (so auch die T10-Snapshots)
+SCAN_CHUNK = 0x100000  # 1 MiB per read while scanning (same as the T10 snapshots)
 
 
 class MemoryAccessError(Exception):
-    """Basisklasse aller Speicherfehler."""
+    """Base class of all memory errors."""
 
 
 class NotConnected(MemoryAccessError):
-    """Zugriff ohne geprüfte Verbindung."""
+    """Access without a verified connection."""
 
 
 class ConnectionLost(MemoryAccessError):
-    """Das Backend hat beim Lesen/Schreiben einen Fehler gemeldet (Dolphin beendet, Emulation gestoppt, ...)."""
+    """The backend reported an error while reading/writing (Dolphin closed, emulation stopped, ...)."""
 
 
 class AddressError(MemoryAccessError):
-    """Adresse liegt nicht in MEM1/MEM2."""
+    """Address is not in MEM1/MEM2."""
 
 
 class ConnectStatus(enum.Enum):
     CONNECTED = "connected"
-    NO_DOLPHIN = "no_dolphin"  # kein Dolphin/PrimeHack gefunden
-    NO_GAME = "no_game"  # Dolphin läuft, aber es wird nichts emuliert
-    WRONG_GAME = "wrong_game"  # anderes Spiel oder andere Region
+    NO_DOLPHIN = "no_dolphin"  # no Dolphin/PrimeHack found
+    NO_GAME = "no_game"  # Dolphin runs, but nothing is emulated
+    WRONG_GAME = "wrong_game"  # other game or other region
 
 
 @dataclass(frozen=True)
@@ -61,14 +59,14 @@ class ConnectResult:
     @property
     def message(self) -> str:
         if self.status is ConnectStatus.CONNECTED:
-            return f"Mit Dolphin verbunden, Spiel {EXPECTED_GAME_ID.decode()} erkannt."
+            return f"Connected to Dolphin, game {EXPECTED_GAME_ID.decode()} detected."
         if self.status is ConnectStatus.NO_DOLPHIN:
-            return "Dolphin/PrimeHack nicht gefunden. Bitte den Emulator starten."
+            return "Dolphin/PrimeHack not found. Please start the emulator."
         if self.status is ConnectStatus.NO_GAME:
-            return "Dolphin läuft, aber es wird kein Spiel emuliert. Bitte das gepatchte MP3-ISO starten."
+            return "Dolphin is running, but no game is being emulated. Please start the patched MP3 ISO."
         shown = self.game_id.decode("ascii", "replace") if self.game_id else "?"
-        return (f"Falsches Spiel in Dolphin: Game-ID {shown!r}, erwartet {EXPECTED_GAME_ID.decode()!r} "
-                f"(Metroid Prime 3 PAL). Der Client liest und schreibt nichts.")
+        return (f"Wrong game in Dolphin: game ID {shown!r}, expected {EXPECTED_GAME_ID.decode()!r} "
+                f"(Metroid Prime 3 PAL). The client reads and writes nothing.")
 
 
 def in_ram(address: int, size: int = 1) -> bool:
@@ -78,7 +76,7 @@ def in_ram(address: int, size: int = 1) -> bool:
 
 
 class MemoryAccess:
-    """Gekapselter Wii-Speicher. Unterklassen implementieren nur die Primitive."""
+    """Wrapped Wii memory. Subclasses only implement the primitives."""
 
     expected_game_id: bytes = EXPECTED_GAME_ID
 
@@ -86,7 +84,7 @@ class MemoryAccess:
         self.verified = False
         self.last_game_id = b""
 
-    # ---- Primitive (Unterklassen) ---------------------------------------------------------------------------- #
+    # ---- primitives (subclasses) ------------------------------------------------------------------------------- #
 
     def _hook(self) -> None:
         raise NotImplementedError
@@ -103,7 +101,7 @@ class MemoryAccess:
     def _write(self, address: int, data: bytes) -> None:
         raise NotImplementedError
 
-    # ---- Verbindung ------------------------------------------------------------------------------------------ #
+    # ---- connection -------------------------------------------------------------------------------------------- #
 
     @property
     def connected(self) -> bool:
@@ -111,12 +109,12 @@ class MemoryAccess:
             return False
         try:
             return self._is_hooked()
-        except Exception:  # noqa: BLE001 - Backend-Fehler = getrennt
+        except Exception:  # noqa: BLE001 - backend error = disconnected
             self.verified = False
             return False
 
     def connect(self) -> ConnectResult:
-        """Hook an Dolphin und prüft die Game-ID. Bei jeder Abweichung wird wieder getrennt."""
+        """Hooks Dolphin and checks the game ID. Any mismatch disconnects again."""
         self.verified = False
         try:
             if not self._is_hooked():
@@ -124,7 +122,7 @@ class MemoryAccess:
             if not self._is_hooked():
                 return ConnectResult(ConnectStatus.NO_DOLPHIN)
             game_id = self._read(GAME_ID_ADDRESS, len(self.expected_game_id))
-        except Exception:  # noqa: BLE001 - dme wirft RuntimeError, wenn nichts emuliert wird
+        except Exception:  # noqa: BLE001 - dme raises RuntimeError when nothing is emulated
             self._safe_unhook()
             return ConnectResult(ConnectStatus.NO_GAME)
         self.last_game_id = bytes(game_id)
@@ -148,7 +146,7 @@ class MemoryAccess:
             pass
 
     def check_game_id(self) -> bool:
-        """Liest die Game-ID erneut (Spielwechsel im laufenden Dolphin). Bei Abweichung: trennen, ``False``."""
+        """Reads the game ID again (game switched in a running Dolphin). On a mismatch: disconnect, ``False``."""
         game_id = self.read(GAME_ID_ADDRESS, len(self.expected_game_id))
         if game_id != self.expected_game_id:
             self.last_game_id = bytes(game_id)
@@ -156,36 +154,36 @@ class MemoryAccess:
             return False
         return True
 
-    # ---- Lesen / Schreiben ----------------------------------------------------------------------------------- #
+    # ---- read / write ------------------------------------------------------------------------------------------ #
 
     def read(self, address: int, size: int) -> bytes:
         if not self.verified:
-            raise NotConnected("Speicherzugriff ohne geprüfte Verbindung")
+            raise NotConnected("memory access without a verified connection")
         if size <= 0 or not in_ram(address, size):
-            raise AddressError(f"Bereich 0x{address:08X}+0x{size:X} liegt nicht in MEM1/MEM2")
+            raise AddressError(f"range 0x{address:08X}+0x{size:X} is not in MEM1/MEM2")
         try:
             data = self._read(address, size)
         except Exception as exc:  # noqa: BLE001
             self.verified = False
-            raise ConnectionLost(f"Lesen bei 0x{address:08X} fehlgeschlagen: {exc}") from exc
+            raise ConnectionLost(f"read at 0x{address:08X} failed: {exc}") from exc
         if len(data) != size:
             self.verified = False
-            raise ConnectionLost(f"Lesen bei 0x{address:08X}: {len(data)} statt {size} Byte")
+            raise ConnectionLost(f"read at 0x{address:08X}: {len(data)} instead of {size} bytes")
         return bytes(data)
 
     def write(self, address: int, data: bytes) -> None:
-        """Schreiben (erst ab T07 benutzt). Prüft vorher noch einmal die Game-ID."""
+        """Write (used for item giving, T07). Checks the game ID once more first."""
         if not self.verified:
-            raise NotConnected("Schreiben ohne geprüfte Verbindung")
+            raise NotConnected("write without a verified connection")
         if not data or not in_ram(address, len(data)):
-            raise AddressError(f"Bereich 0x{address:08X}+0x{len(data):X} liegt nicht in MEM1/MEM2")
+            raise AddressError(f"range 0x{address:08X}+0x{len(data):X} is not in MEM1/MEM2")
         if not self.check_game_id():
-            raise NotConnected("Game-ID hat sich geändert, Schreiben abgebrochen")
+            raise NotConnected("game ID changed, write aborted")
         try:
             self._write(address, bytes(data))
         except Exception as exc:  # noqa: BLE001
             self.verified = False
-            raise ConnectionLost(f"Schreiben bei 0x{address:08X} fehlgeschlagen: {exc}") from exc
+            raise ConnectionLost(f"write at 0x{address:08X} failed: {exc}") from exc
 
     def read_u32(self, address: int) -> int:
         return struct.unpack(">I", self.read(address, 4))[0]
@@ -194,13 +192,13 @@ class MemoryAccess:
         return struct.unpack(">Q", self.read(address, 8))[0]
 
     def read_pointer(self, address: int) -> int | None:
-        """4-Byte-Zeiger lesen. ``None``, wenn er nicht in MEM1/MEM2 zeigt (z. B. 0 im Menü)."""
+        """Read a 4-byte pointer. ``None`` if it does not point into MEM1/MEM2 (e.g. 0 in the menu)."""
         value = self.read_u32(address)
         return value if in_ram(value) else None
 
     def iter_chunks(self, start: int, size: int, overlap: int = 0, chunk: int = SCAN_CHUNK):
-        """Liest ``[start, start+size)`` stückweise. Liefert ``(adresse, daten)``; aufeinanderfolgende Stücke
-        überlappen um ``overlap`` Byte, damit Muster an Stückgrenzen gefunden werden."""
+        """Reads ``[start, start+size)`` in chunks. Yields ``(address, data)``; consecutive chunks overlap by
+        ``overlap`` bytes so that patterns across chunk borders are found."""
         pos = start
         end = start + size
         while pos < end:
@@ -213,15 +211,15 @@ class MemoryAccess:
 
 
 class DolphinMemory(MemoryAccess):
-    """Echter Zugriff über ``dolphin-memory-engine`` (Dolphin und PrimeHack)."""
+    """Real access through ``dolphin-memory-engine`` (Dolphin and PrimeHack)."""
 
     def __init__(self) -> None:
         super().__init__()
         try:
             import dolphin_memory_engine
-        except ImportError as exc:  # pragma: no cover - nur ohne Abhängigkeit
+        except ImportError as exc:  # pragma: no cover - only without the dependency
             raise ImportError(
-                "Das Paket 'dolphin-memory-engine' fehlt. Installieren mit: "
+                "The package 'dolphin-memory-engine' is missing. Install it with: "
                 "python -m pip install \"dolphin-memory-engine>=1.3.0\"") from exc
         self._dme = dolphin_memory_engine
 

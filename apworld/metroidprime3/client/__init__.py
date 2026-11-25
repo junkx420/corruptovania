@@ -1,14 +1,18 @@
-"""Metroid Prime 3 Client (T06): Dolphin/PrimeHack <-> Archipelago-Server. Doku: docs/AP_CLIENT.md.
+"""Metroid Prime 3 Client (T06, T07): Dolphin/PrimeHack <-> Archipelago server. Docs: docs/AP_CLIENT.md.
 
-Module:
-- ``memory``     gekapselter Speicherzugriff (``MemoryAccess``, ``DolphinMemory``), Game-ID-Prüfung
-- ``game``       Spielzustand (ingame/Menü, Welt, ItemPercentage)
-- ``flag_block`` Signatursuche des Flag-Blocks je Welt (E8)
-- ``checks``     Flag-Byte -> Location (E12), Entprellung
-- ``learning``   Lernmodus (E19)
-- ``context``    CommonClient-Kontext, Polling-Schleife, ``main``
+Modules:
+- ``memory``     wrapped memory access (``MemoryAccess``, ``DolphinMemory``), game ID check
+- ``game``       game state (ingame/menu, world, ItemPercentage)
+- ``flag_block`` signature search of the flag block per world (E8)
+- ``checks``     flag byte -> location (E12), debouncing
+- ``learning``   learning mode (E19)
+- ``inventory``  effect table item -> slots, slot limits, target values and write plan (E9, E11)
+- ``give``       item giving per poll: settling, writing, read-back, throttling
+- ``seed_check`` seed ID in RAM against seed/slot of the server (T18 part 2)
+- ``goal``       goal detection (interface, open until T17)
+- ``context``    CommonClient context, poll loop, ``main``
 
-``context`` importiert CommonClient und wird deshalb erst beim Start geladen.
+``context`` imports CommonClient and is therefore only loaded on start.
 """
 
 

@@ -1,4 +1,4 @@
-"""Client Teil 1 (T06): Signatursuche, Game-ID, Menü/Laden, Location-Checks, Lernmodus - mit Fake-Speicher."""
+"""Client part 1 (T06): signature search, game ID, menu/loading, location checks, learning mode - with fake memory."""
 
 from __future__ import annotations
 
@@ -16,13 +16,15 @@ from ..client.learning import LearningMode
 from ..client.memory import MEM1_START, ConnectStatus, NotConnected
 from ..items import BASE_ID
 from ..location_flags import LOCATION_FLAGS
+from ..patcher.seed_id import make_seed_id
 from .fake_memory import FakeMemory
 
 NORION = 0x6FB8EF2A9523C343
 VALHALLA = 0xC133F919C108BDF9
 OLYMPUS = 0x37A9E86F0A0CAF6F
 
-STATIC_LIMIT = 0x80700000  # alles darunter ist DOL/statische Daten (Zustands-Zeiger, Game-ID)
+STATIC_LIMIT = 0x80700000  # everything below is DOL/static data (state pointers, game ID, build string)
+TEST_SEED = "T07TestSeed"
 
 
 class FakeClock:
@@ -49,7 +51,7 @@ class TestFlagBlockFinder(unittest.TestCase):
 
     def test_finds_block_at_chunk_border(self) -> None:
         memory = connected_memory()
-        w = memory.place_block(MEM1_START + 0x300000 + 4, NORION)  # Wächter im einen, MLVL-ID im nächsten Stück
+        w = memory.place_block(MEM1_START + 0x300000 + 4, NORION)  # guard in one chunk, MLVL ID in the next
         memory.place_block(MEM1_START + 0x500000 - 4, VALHALLA)
         finder = FlagBlockFinder(memory)
         self.assertEqual(finder.get(NORION), [w])
@@ -62,8 +64,8 @@ class TestFlagBlockFinder(unittest.TestCase):
         memory.set_flag(old, 1)
         finder = FlagBlockFinder(memory, clock=clock)
         self.assertEqual(finder.get(VALHALLA), [old])
-        new = memory.move_block(old, 0x80A49CC0, VALHALLA)  # wie T10 nach dem Neuladen
-        read = finder.read_flags(VALHALLA)  # gemerkte Adresse ungültig -> sofort neu suchen
+        new = memory.move_block(old, 0x80A49CC0, VALHALLA)  # like T10 after reloading
+        read = finder.read_flags(VALHALLA)  # remembered address invalid -> rescan at once
         self.assertEqual(read.blocks, (new,))
         self.assertEqual(read.flags[1], 1)
         self.assertEqual(finder.scan_count, 2)
@@ -81,7 +83,7 @@ class TestFlagBlockFinder(unittest.TestCase):
         finder = FlagBlockFinder(memory)
         good = memory.place_block(0x80A00000, NORION)
         self.assertTrue(finder.validate(good, NORION))
-        self.assertFalse(finder.validate(good, VALHALLA))  # andere Welt
+        self.assertFalse(finder.validate(good, VALHALLA))  # other world
         bad_guard = memory.place_block(0x80A10000, NORION)
         memory.poke(bad_guard - 4, b"\0\0\0\0")
         bad_count = memory.place_block(0x80A20000, NORION)
@@ -93,10 +95,10 @@ class TestFlagBlockFinder(unittest.TestCase):
         self.assertNotIn(VALHALLA, finder.blocks)
 
     def test_several_blocks_or_merged(self) -> None:
-        """Annahme (T14): alle gültigen Blöcke der Welt werden ODER-verknüpft, Abweichungen gemeldet."""
+        """Assumption (T14): all valid blocks of the world are merged with OR, differences are reported."""
         memory = connected_memory()
         main = memory.place_block(0x80A13AA0, NORION)
-        copy = memory.place_block(0x811EBA40, NORION)  # wie T10-Snapshot C1
+        copy = memory.place_block(0x811EBA40, NORION)  # like T10 snapshot C1
         other = memory.place_block(0x80A49CC0, VALHALLA)
         for b in (1, 6, 8):
             memory.set_flag(main, b)
@@ -107,19 +109,19 @@ class TestFlagBlockFinder(unittest.TestCase):
         self.assertEqual(read.disagree, (1, 6, 8))
 
     def test_implausible_block_rejected(self) -> None:
-        """Wie T10 „Pirate Homeworld - Command“ 0x80A11900: Kopf gültig, Bytes hinter Liste 1 gesetzt -> verworfen."""
+        """Like T10 "Pirate Homeworld - Command" 0x80A11900: header valid, bytes behind list 1 set -> rejected."""
         memory = connected_memory()
-        command = 0x38098524EF78B6D2  # Liste 1: 209 Einträge
+        command = 0x38098524EF78B6D2  # list 1: 209 entries
         good = memory.place_block(0x80A22E20, command)
         junk = memory.place_block(0x80A11900, command)
-        memory.set_flag(junk, 1)  # wäre Ort 86
+        memory.set_flag(junk, 1)  # would be location 86
         memory.set_flag(junk, 670)
         finder = FlagBlockFinder(memory)
         read = finder.read_flags(command)
         self.assertEqual(read.blocks, (good,))
         self.assertEqual(finder.rejected[command], [junk])
         self.assertEqual(LocationTable().collected(command, read.flags), set())
-        # wird ein gemerkter Block nachträglich unplausibel: neu suchen, Block fällt heraus
+        # a remembered block becomes implausible later: rescan, the block drops out
         memory.set_flag(good, 300)
         self.assertIsNone(finder.read_flags(command))
 
@@ -137,19 +139,19 @@ class TestFlagBlockFinder(unittest.TestCase):
 
     @unittest.skipUnless(os.environ.get("MP3_MEM1_SNAPSHOT"), "MP3_MEM1_SNAPSHOT (T10-Snapshot D2_mem1.bin) fehlt")
     def test_real_snapshot(self) -> None:
-        """Gegenprobe am echten Speicherabzug aus T10 (Snapshot D2: Norion, Orte 3 und 4 eingesammelt)."""
+        """Cross-check on the real memory dump from T10 (snapshot D2: Norion, locations 3 and 4 collected)."""
         memory = connected_memory()
         with open(os.environ["MP3_MEM1_SNAPSHOT"], "rb") as f:
             memory.mem1[:] = f.read()
-        memory.verified = True  # Snapshot enthält die Game-ID; connect() hat schon geprüft
+        memory.verified = True  # the snapshot contains the game ID; connect() checked it
         finder = FlagBlockFinder(memory)
         blocks = finder.scan()
         self.assertEqual(blocks[NORION], [0x80A13AA0])
         self.assertEqual(blocks[VALHALLA], [0x80A49CC0])
-        self.assertEqual(len(blocks), 14)  # Blöcke aller Welten mit Orten liegen im Speicher
+        self.assertEqual(len(blocks), 14)  # blocks of all worlds with locations are in memory
         command = 0x38098524EF78B6D2
         self.assertEqual(blocks[command], [0x80A22E20])
-        self.assertEqual(finder.rejected[command], [0x80A11900])  # Datenmüll hinter Liste 1
+        self.assertEqual(finder.rejected[command], [0x80A11900])  # garbage behind list 1
         table = LocationTable()
         self.assertEqual(table.collected(NORION, finder.read_flags(NORION).flags), {3, 4})
         self.assertEqual(table.collected(VALHALLA, finder.read_flags(VALHALLA).flags), {11})
@@ -189,12 +191,12 @@ class TestMemory(unittest.TestCase):
         memory.set_menu()
         self.assertFalse(game.read_game_state(memory).ingame)
         memory.set_ingame(NORION)
-        memory.poke_u32(0x80B81AE0, 0x80001234)  # falsche vtable
+        memory.poke_u32(0x80B81AE0, 0x80001234)  # wrong vtable
         self.assertFalse(game.read_game_state(memory).ingame)
 
 
 class RecordingContext(MP3Context):
-    """MP3Context ohne Server: ``send_msgs`` wird mitgeschrieben, Verbindung zum Server simuliert."""
+    """MP3Context without a server: ``send_msgs`` is recorded, the server connection is simulated."""
 
     fake_server = True
 
@@ -206,12 +208,18 @@ class RecordingContext(MP3Context):
         self.sent.extend(msgs)
 
 
-def make_context(memory: FakeMemory, log_path: str) -> RecordingContext:
+def make_context(memory: FakeMemory, log_path: str, seed_ok: bool = True) -> RecordingContext:
+    """Context as after ``Connected`` with seed ``TEST_SEED``, slot 1. ``seed_ok``: the ISO carries the matching ID."""
     ctx = RecordingContext(None, None, memory=memory, learning_log=log_path)
     ctx.sent = []
     ctx.slot = 1
+    ctx.team = 0
+    ctx.server_seed_name = TEST_SEED
+    ctx.connected_identity = (TEST_SEED, 0, 1)
     ctx.missing_locations = {BASE_ID + i for i in LOCATION_FLAGS}
     ctx.server_locations = set(ctx.missing_locations)
+    if seed_ok:
+        memory.set_seed_id(make_seed_id(TEST_SEED, 1))
     return ctx
 
 
@@ -263,7 +271,7 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         ctx = make_context(memory, self.log_path)
         await self.poll(ctx, 3)
         self.assertEqual(location_checks(ctx), [])
-        memory.set_flag(block, 8)  # Ort 4, Norion Docking Hub Alpha
+        memory.set_flag(block, 8)  # location 4, Norion Docking Hub Alpha
         memory.set_item_percentage(2)
         await self.poll(ctx, 6)
         self.assertEqual(location_checks(ctx), [BASE_ID + 4])
@@ -275,40 +283,57 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         norion = memory.place_block(0x80A13AA0, NORION)
         memory.set_ingame(NORION, item_percentage=1)
         ctx = make_context(memory, self.log_path)
-        memory.set_flag(norion, 7)  # Ort 3
+        memory.set_flag(norion, 7)  # location 3
         await self.poll(ctx, 3)
         self.assertEqual(location_checks(ctx), [BASE_ID + 3])
-        # Flug nach Valhalla: Ladephase (CPlayer 0), dann neue Welt
+        # flight to Valhalla: loading phase (CPlayer 0), then new world
         memory.set_menu()
         await self.poll(ctx, 2)
         valhalla = memory.place_block(0x80A1FD40, VALHALLA)
         memory.set_ingame(VALHALLA, item_percentage=1)
         await self.poll(ctx, 2)
-        memory.set_flag(valhalla, 1)  # Ort 11
+        memory.set_flag(valhalla, 1)  # location 11
         memory.set_item_percentage(2)
         await self.poll(ctx, 3)
-        # Spielstand neu laden: Block zieht um, Inhalt bleibt
+        # reload the save: the block moves, the content stays
         memory.set_menu()
         await self.poll(ctx, 2)
         memory.move_block(valhalla, 0x80A49CC0, VALHALLA)
         memory.set_ingame(VALHALLA, item_percentage=2)
         await self.poll(ctx, 4)
-        # zurück nach Norion: alter Block ist noch da, Ort 3 wird nicht erneut gesendet
+        # back to Norion: the old block is still there, location 3 is not sent again
         memory.set_ingame(NORION, item_percentage=2)
         await self.poll(ctx, 4)
         self.assertEqual(location_checks(ctx), [BASE_ID + 3, BASE_ID + 11])
         self.assertEqual(memory.writes, [])
 
     async def test_checks_kept_while_server_offline(self) -> None:
+        """Server briefly gone (connected before, ID matches that connection): locations are noted."""
         memory = FakeMemory()
         block = memory.place_block(0x80A13AA0, NORION)
         memory.set_ingame(NORION)
         ctx = make_context(memory, self.log_path)
         ctx.fake_server = False
+        ctx.server_seed_name = None  # like after reset_server_state, connected_identity stays
         memory.set_flag(block, 8)
         await self.poll(ctx, 3)
         self.assertEqual(location_checks(ctx), [])
-        self.assertEqual(ctx.locations_checked, {BASE_ID + 4})  # CommonClient schickt sie beim Connected mit
+        self.assertEqual(ctx.locations_checked, {BASE_ID + 4})  # CommonClient sends them with Connected
+
+    async def test_never_connected_notes_nothing(self) -> None:
+        """T18: without ever having been connected to the server the ID cannot be checked -> note nothing."""
+        memory = FakeMemory()
+        block = memory.place_block(0x80A13AA0, NORION)
+        memory.set_ingame(NORION)
+        ctx = make_context(memory, self.log_path)
+        ctx.fake_server = False
+        ctx.server_seed_name = None
+        ctx.connected_identity = None
+        memory.set_flag(block, 8)
+        await self.poll(ctx, 3)
+        self.assertEqual(ctx.locations_checked, set())
+        self.assertEqual(ctx.seed_check.result.status.value, "waiting")
+        self.assertEqual(memory.writes, [])
 
     async def test_server_already_checked_not_resent(self) -> None:
         memory = FakeMemory()
@@ -344,7 +369,7 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         clock = FakeClock()
         ctx.learning.clock = clock
         await self.poll(ctx, 2)
-        memory.set_flag(block, 118)  # in Norion keinem Ort zugeordnet (T10: zugleich mit Ort 4 gesetzt)
+        memory.set_flag(block, 118)  # not assigned to any location in Norion (T10: set together with location 4)
         memory.set_item_percentage(2)
         for _ in range(6):
             clock.t += 0.5
@@ -358,8 +383,8 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(entry["item_percentage"], [1, 2])
         self.assertEqual([b["byte"] for b in entry["bytes"]], [118])
         self.assertEqual(entry["bytes"][0]["role"], "unknown")
-        self.assertTrue(any("keinem Ort zugeordnet" in w for w in entry["warnings"]))
-        self.assertTrue(any("ohne erwartetes Orts-Byte" in w for w in entry["warnings"]))
+        self.assertTrue(any("not assigned to any location" in w for w in entry["warnings"]))
+        self.assertTrue(any("without the expected location byte" in w for w in entry["warnings"]))
         self.assertEqual(location_checks(ctx), [])
 
 
@@ -388,7 +413,7 @@ class TestLearningMode(unittest.TestCase):
     def test_expected_byte_no_warning(self) -> None:
         flags = bytearray(1024)
         self.step(flags, 1)
-        flags[8] = 1  # Ort 4
+        flags[8] = 1  # location 4
         self.step(flags, 2)
         for _ in range(5):
             self.step(flags, 2)
@@ -398,10 +423,10 @@ class TestLearningMode(unittest.TestCase):
         self.assertEqual(entry["warnings"], [])
 
     def test_byte_set_before_percentage(self) -> None:
-        """SpecialFunction-Orte: Byte kann Sekunden vor dem ItemPercentage-Anstieg kommen (Fenster ``before``)."""
+        """SpecialFunction locations: the byte can come seconds before the ItemPercentage rise (window ``before``)."""
         flags = bytearray(1024)
         self.step(flags, 1)
-        flags[53] = 1  # Ort 9 (SpecialFunction)
+        flags[53] = 1  # location 9 (SpecialFunction)
         self.step(flags, 1)
         for _ in range(8):
             self.step(flags, 1)
@@ -415,7 +440,7 @@ class TestLearningMode(unittest.TestCase):
     def test_location_byte_without_pickup(self) -> None:
         flags = bytearray(1024)
         self.step(flags, 1)
-        flags[7] = 1  # Ort 3, aber ItemPercentage bleibt
+        flags[7] = 1  # location 3, but ItemPercentage stays
         self.step(flags, 1)
         for _ in range(25):
             self.step(flags, 1)
@@ -426,8 +451,8 @@ class TestLearningMode(unittest.TestCase):
     def test_inventory_fill_after_load_is_not_a_pickup(self) -> None:
         flags = bytearray(1024)
         self.clock.t += 0.5
-        self.mode.update(NORION, bytes(flags), 0, False)  # Intro: Inventar 0/0
-        self.step(flags, 5)  # Inventar befüllt
+        self.mode.update(NORION, bytes(flags), 0, False)  # intro: inventory 0/0
+        self.step(flags, 5)  # inventory filled
         for _ in range(6):
             self.step(flags, 5)
         self.assertEqual(self.records(), [])
@@ -441,7 +466,7 @@ class TestTableAndDetector(unittest.TestCase):
         self.assertEqual(table.collected(NORION, bytes(flags)), {3, 4})
         self.assertEqual(table.collected(VALHALLA, bytes(flags)), set())
         self.assertEqual(table.describe(NORION, 118).role, "unknown")
-        self.assertEqual(table.describe(0xC37F4AD853284C78, 231).role, "extra")  # other_bytes von Ort 64
+        self.assertEqual(table.describe(0xC37F4AD853284C78, 231).role, "extra")  # other_bytes of location 64
         self.assertEqual(sum(len(v) for v in table.by_world.values()), 99)
 
     def test_detector_debounce(self) -> None:
@@ -450,6 +475,6 @@ class TestTableAndDetector(unittest.TestCase):
         self.assertEqual(detector.update({4}), {4})
         self.assertEqual(detector.update({4}), set())
         self.assertEqual(detector.update({3}), set())
-        self.assertEqual(detector.update(set()), set())  # nur kurz gesetzt: verworfen
+        self.assertEqual(detector.update(set()), set())  # only set briefly: dropped
         self.assertEqual(detector.update({3}), set())
         self.assertEqual(detector.update({3}), {3})

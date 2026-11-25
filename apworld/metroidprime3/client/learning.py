@@ -1,20 +1,19 @@
-"""Lern-/Logmodus (SPEC E19): protokolliert neu gesetzte Flag-Bytes, wenn ItemPercentage steigt.
+"""Learning/log mode (SPEC E19): logs newly set flag bytes when ItemPercentage rises.
 
-Ablauf je Abfrage (``update``):
-1. Bytes, die seit der letzten Abfrage derselben Welt von 0 auf ungleich 0 gesprungen sind, kommen mit Zeitpunkt in
-   eine Liste ``recent``.
-2. Steigt ``ItemPercentage`` (jeder Pickup gibt +1, AP_MEMORY_MAP.md Abschnitt 5), wird ein Ereignis eröffnet.
-3. ``after`` Sekunden nach dem Anstieg wird das Ereignis abgeschlossen: alle Bytes aus ``recent`` im Fenster
-   ``[Anstieg - before, Anstieg + after]`` werden mit Welt, Raum (falls bekannt) und Zeitpunkt in die Logdatei
-   geschrieben (eine JSON-Zeile je Ereignis) und gegen die Tabelle geprüft:
-   - Byte gesetzt, aber keinem Ort zugeordnet  -> Warnung ``unknown_byte``
-   - Pickup eingesammelt ohne erwartetes Byte  -> Warnung ``pickup_without_byte``
-   Das Fenster reicht zurück (``before``), weil bei SpecialFunction-Orten das Memory Relay schon zu Beginn der
-   Sequenz gesetzt werden kann (AP_SAVW_FORMAT.md, Ort 43).
-4. Orts-Bytes, die ohne ItemPercentage-Anstieg gesetzt wurden, werden als ``location_byte_without_pickup`` protokolliert.
+Per poll (``update``):
+1. Bytes of the same world that went from 0 to non-zero since the last poll are added to ``recent`` with a timestamp.
+2. When ``ItemPercentage`` rises (every pickup gives +1, AP_MEMORY_MAP.md section 5), an event is opened.
+3. ``after`` seconds after the rise the event is closed: all bytes from ``recent`` within the window
+   ``[rise - before, rise + after]`` are written to the log file with world, room (if known) and time (one JSON line
+   per event) and checked against the table:
+   - byte set, but not assigned to any location  -> warning ``unknown_byte``
+   - pickup collected without the expected byte  -> warning ``pickup_without_byte``
+   The window reaches back (``before``) because for SpecialFunction locations the memory relay can be set at the very
+   start of the sequence (AP_SAVW_FORMAT.md, location 43).
+4. Location bytes set without an ItemPercentage rise are logged as ``location_byte_without_pickup``.
 
-Der Raum ist nur für Bytes bekannt, die laut Tabelle zu einem Ort gehören (der aktuelle Raum wird nicht gelesen,
-seine Adresse ist unbekannt, AP_MEMORY_MAP.md Abschnitt 7).
+The room is only known for bytes that belong to a location according to the table (the player's current room is not
+read, its address is unknown, AP_MEMORY_MAP.md section 7).
 """
 
 from __future__ import annotations
@@ -75,10 +74,10 @@ class LearningMode:
         self._pending: list[_PickupEvent] = []
         self._last_disagree: tuple[int, ...] = ()
 
-    # ---- Steuerung ------------------------------------------------------------------------------------------- #
+    # ---- control ----------------------------------------------------------------------------------------------- #
 
     def reset(self) -> None:
-        """Menü/Laden: offene Ereignisse abschließen, Vergleichsbasis verwerfen."""
+        """Menu/loading: close open events, drop the comparison base."""
         self.flush()
         self._world = None
         self._prev_flags = None
@@ -91,7 +90,7 @@ class LearningMode:
         self._pending = []
         self._report_unclaimed(force=True)
 
-    # ---- Abfrage --------------------------------------------------------------------------------------------- #
+    # ---- poll -------------------------------------------------------------------------------------------------- #
 
     def update(self, world_id: int, flags: bytes, item_percentage: int | None, inventory_valid: bool,
                blocks: tuple[int, ...] = (), disagree: tuple[int, ...] = ()) -> None:
@@ -122,13 +121,13 @@ class LearningMode:
                                                   item_percentage, blocks))
             self._prev_percentage = item_percentage
         else:
-            self._prev_percentage = None  # Inventar noch leer (Intro/Laden): kein Anstieg ableitbar
+            self._prev_percentage = None  # inventory still empty (intro/loading): no rise can be derived
 
         for event in [e for e in self._pending if now - e.t >= self.after]:
             self._finalize(event)
         self._report_unclaimed()
 
-    # ---- Auswertung ------------------------------------------------------------------------------------------ #
+    # ---- evaluation -------------------------------------------------------------------------------------------- #
 
     def _finalize(self, event: _PickupEvent) -> None:
         if event in self._pending:
@@ -147,25 +146,26 @@ class LearningMode:
             if info.role == "location":
                 has_location = True
             elif info.role == "unknown":
-                warnings.append(f"Byte {change.byte} gesetzt, aber keinem Ort zugeordnet")
+                warnings.append(f"byte {change.byte} set, but not assigned to any location")
         if not has_location:
-            warnings.append("Pickup eingesammelt (ItemPercentage gestiegen) ohne erwartetes Orts-Byte")
+            warnings.append("pickup collected (ItemPercentage rose) without the expected location byte")
         world = self.table.world_name(event.world_id)
         self._write({"kind": "pickup", "time": event.wall, "world": world, "world_id": f"0x{event.world_id:016X}",
                      "room": next((e["room"] for e in entries if e["role"] == "location"), None),
                      "item_percentage": [event.old, event.new], "blocks": [f"0x{a:08X}" for a in event.blocks],
                      "bytes": entries, "warnings": warnings})
         summary = ", ".join(
-            f"Byte {e['byte']}" + (f" = Ort {e['location']} ({e['room']})" if e["role"] == "location" else
-                                   f" (Zusatz-Byte von Ort {e['location']})" if e["role"] == "extra" else " (unbekannt)")
-            for e in entries) or "keine neuen Bytes"
-        self.logger.info(f"[Lernmodus] {world}: ItemPercentage {event.old} -> {event.new}: {summary}")
+            f"byte {e['byte']}" + (f" = location {e['location']} ({e['room']})" if e["role"] == "location" else
+                                   f" (extra byte of location {e['location']})" if e["role"] == "extra" else
+                                   " (unknown)")
+            for e in entries) or "no new bytes"
+        self.logger.info(f"[learning] {world}: ItemPercentage {event.old} -> {event.new}: {summary}")
         for warning in warnings:
             self.warnings += 1
-            self.logger.warning(f"[Lernmodus] {world}: {warning}")
+            self.logger.warning(f"[learning] {world}: {warning}")
 
     def _report_unclaimed(self, force: bool = False) -> None:
-        """Orts-Bytes, die ohne ItemPercentage-Anstieg gesetzt wurden (nach Ablauf aller Fenster)."""
+        """Location bytes set without an ItemPercentage rise (after all windows have passed)."""
         now = self.clock()
         horizon = self.before + self.after
         keep = []
@@ -182,8 +182,8 @@ class LearningMode:
                                  "byte": change.byte, "location": info.pickup_index,
                                  "location_name": info.location_name, "room": info.room})
                     self.warnings += 1
-                    self.logger.warning(f"[Lernmodus] {world}: Byte {change.byte} (Ort {info.pickup_index}) gesetzt, "
-                                        f"ohne dass ItemPercentage gestiegen ist")
+                    self.logger.warning(f"[learning] {world}: byte {change.byte} (location {info.pickup_index}) set "
+                                        f"without ItemPercentage rising")
         self._recent = keep
 
     def _write(self, record: dict) -> None:
@@ -196,4 +196,4 @@ class LearningMode:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
             self.entries_written += 1
         except OSError as exc:
-            self.logger.error(f"[Lernmodus] Logdatei {self.log_path} nicht schreibbar: {exc}")
+            self.logger.error(f"[learning] log file {self.log_path} not writable: {exc}")

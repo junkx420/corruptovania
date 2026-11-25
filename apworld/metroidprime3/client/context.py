@@ -1,6 +1,7 @@
-"""Metroid Prime 3 Client (T06): CommonClient + Dolphin, Location-Checks und Lernmodus.
+"""Metroid Prime 3 Client: CommonClient + Dolphin, location checks and learning mode (T06), item giving and seed check
+(T07, T18 part 2).
 
-Start und Bedienung: docs/AP_CLIENT.md. Item-Vergabe kommt in T07 (``MP3Context.give_items``).
+Start and usage: docs/AP_CLIENT.md.
 """
 
 from __future__ import annotations
@@ -13,65 +14,81 @@ from typing import Any
 
 import Utils
 from CommonClient import ClientCommandProcessor, CommonContext, get_base_parser, gui_enabled, logger, server_loop
+from NetUtils import ClientStatus
 
-from ..items import BASE_ID, GAME_NAME
+from ..items import BASE_ID, GAME_NAME, item_name_to_id, starting_names
 from .checks import CheckDetector, LocationTable
 from .flag_block import FlagBlockFinder
 from .game import GameState, read_game_state
+from .give import ItemGiver
+from .goal import GoalDetector
+from .inventory import ITEM_EFFECTS, START_INVENTORY_LOCATION, desired_value, effective_items, slot_label
 from .learning import LearningMode
 from .memory import ConnectionLost, ConnectStatus, MemoryAccess, MemoryAccessError
+from .seed_check import SeedCheck, SeedCheckResult, SeedStatus
 
 DEFAULT_POLL_INTERVAL = 0.5
 RECONNECT_DELAY = 5.0
 SUPPORTED_SLOT_DATA_VERSION = 1
+
+ITEM_ID_TO_NAME: dict[int, str] = {item_id: name for name, item_id in item_name_to_id.items()}
 
 
 class MP3CommandProcessor(ClientCommandProcessor):
     ctx: "MP3Context"
 
     def _cmd_dolphin(self) -> None:
-        """Zeigt den Status der Dolphin-Verbindung."""
+        """Shows the state of the Dolphin connection."""
         self.output(self.ctx.status_text())
 
     def _cmd_learning(self, value: str = "") -> None:
-        """Lernmodus an/aus: /learning on|off (ohne Argument: Status)."""
+        """Learning mode on/off: /learning on|off (no argument: status)."""
         learning = self.ctx.learning
-        if value.lower() in ("on", "an", "1"):
+        if value.lower() in ("on", "1"):
             learning.enabled = True
-        elif value.lower() in ("off", "aus", "0"):
+        elif value.lower() in ("off", "0"):
             learning.flush()
             learning.enabled = False
-        self.output(f"Lernmodus {'an' if learning.enabled else 'aus'}, Logdatei: {learning.log_path}, "
-                    f"{learning.entries_written} Einträge, {learning.warnings} Warnungen")
+        self.output(f"Learning mode {'on' if learning.enabled else 'off'}, log file: {learning.log_path}, "
+                    f"{learning.entries_written} entries, {learning.warnings} warnings")
 
     def _cmd_blocks(self) -> None:
-        """Zeigt die gefundenen Flag-Blöcke je Welt."""
+        """Shows the flag blocks found per world."""
         finder = self.ctx.finder
         if not finder.blocks:
-            self.output("Keine Flag-Blöcke bekannt.")
+            self.output("No flag blocks known.")
         for world, addresses in sorted(finder.blocks.items()):
             self.output(f"{self.ctx.table.world_name(world)}: " + ", ".join(f"0x{a:08X}" for a in addresses))
         for world, addresses in sorted(finder.rejected.items()):
-            self.output(f"verworfen (unplausibel) {self.ctx.table.world_name(world)}: "
+            self.output(f"rejected (implausible) {self.ctx.table.world_name(world)}: "
                         + ", ".join(f"0x{a:08X}" for a in addresses))
-        self.output(f"Suchläufe: {finder.scan_count}, letzter {finder.last_scan_seconds:.2f} s")
+        self.output(f"Scans: {finder.scan_count}, last {finder.last_scan_seconds:.2f} s")
+
+    def _cmd_seed(self) -> None:
+        """Shows the result of the seed check (does the ISO belong to this slot?)."""
+        self.output(self.ctx.seed_check.result.message())
+
+    def _cmd_inventory(self) -> None:
+        """Shows target and current value of the inventory slots the client manages (as of the last poll)."""
+        for line in self.ctx.inventory_lines():
+            self.output(line)
 
     def _cmd_poll(self, seconds: str = "") -> None:
-        """Polling-Intervall in Sekunden setzen: /poll 0.5"""
+        """Set the poll interval in seconds: /poll 0.5"""
         if seconds:
             try:
                 value = float(seconds)
             except ValueError:
-                self.output("Zahl erwartet, z. B. /poll 0.5")
+                self.output("Number expected, e.g. /poll 0.5")
                 return
             self.ctx.poll_interval = min(max(value, 0.1), 5.0)
-        self.output(f"Polling-Intervall: {self.ctx.poll_interval} s")
+        self.output(f"Poll interval: {self.ctx.poll_interval} s")
 
 
 class MP3Context(CommonContext):
     command_processor = MP3CommandProcessor
     game = GAME_NAME
-    items_handling = 0b111  # E10: alle Items kommen vom Server, auch eigene
+    items_handling = 0b111  # E10: all items come from the server, own ones too
 
     def __init__(self, server_address: str | None, password: str | None, memory: MemoryAccess | None = None,
                  poll_interval: float = DEFAULT_POLL_INTERVAL, learning: bool = True,
@@ -89,15 +106,21 @@ class MP3Context(CommonContext):
             stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             learning_log = Utils.user_path("logs", f"MP3Client_learning_{stamp}.jsonl")
         self.learning = LearningMode(self.table, learning_log, logger, enabled=learning)
+        self.seed_check = SeedCheck()
+        self.giver = ItemGiver(memory, logger)
+        self.goal = GoalDetector()
         self.slot_data: dict[str, Any] = {}
-        self.dolphin_status = "Dolphin-Verbindung noch nicht gestartet."
+        self._announced = 0  # this many entries of items_received have been announced
+        self._announced_identity: tuple | None = None
+        self._unknown_items: set[int] = set()
+        self.dolphin_status = "Dolphin connection not started yet."
         self.game_state: GameState | None = None
         self.current_world: int | None = None
         self.sync_task: asyncio.Task | None = None
         self._was_ingame = False
         self._last_status_message = ""
 
-    # ---- Server ---------------------------------------------------------------------------------------------- #
+    # ---- server ------------------------------------------------------------------------------------------------ #
 
     async def server_auth(self, password_requested: bool = False) -> None:
         if password_requested and not self.password:
@@ -110,11 +133,54 @@ class MP3Context(CommonContext):
             self.slot_data = args.get("slot_data") or {}
             version = self.slot_data.get("slot_data_version")
             if version != SUPPORTED_SLOT_DATA_VERSION:
-                logger.warning(f"slot_data_version {version}, der Client kennt {SUPPORTED_SLOT_DATA_VERSION}.")
+                logger.warning(f"slot_data_version {version}, this client knows {SUPPORTED_SLOT_DATA_VERSION}.")
             if self.slot_data.get("base_id", BASE_ID) != BASE_ID:
-                logger.error("base_id im Seed passt nicht zu diesem Client. Location-IDs wären falsch.")
-            # Bereits im Speicher erkannte Orte schickt CommonClient beim Connected selbst (locations_checked).
+                logger.error("base_id of the seed does not match this client. Location IDs would be wrong.")
+            self._check_slot_data_items()
+            identity = getattr(self, "connected_identity", None)
+            if identity != self._announced_identity:
+                self._announced_identity = identity
+                self._announced = 0
+            # CommonClient sends locations_checked itself on Connected; locations only get there once the seed ID
+            # matches this seed/slot (T18). The check runs in the next ingame poll.
             self.watcher_event.set()
+        elif cmd == "ReceivedItems":
+            self.announce_received_items()
+
+    def _check_slot_data_items(self) -> None:
+        """Item IDs and names from ``slot_data`` must match this APWorld (otherwise a different version)."""
+        items = self.slot_data.get("items") or {}
+        for name, info in items.items():
+            local = item_name_to_id.get(name)
+            if local is None or local != info.get("id"):
+                logger.error(f"Item {name!r} (ID {info.get('id')}) does not match this APWorld (ID {local}). "
+                             f"Client and seed are different versions.")
+            elif name not in ITEM_EFFECTS:
+                logger.error(f"Item {name!r}: no effect known to the client, it will not be given in the game.")
+
+    def announce_received_items(self) -> None:
+        """Announces every newly received item once in the client window (name, from whom, where). After a reconnect
+        the server sends the list from the start; entries already announced are not repeated."""
+        items = self.items_received
+        if len(items) <= self._announced:
+            return
+        for item in items[self._announced:]:
+            name = ITEM_ID_TO_NAME.get(item.item, f"unknown item {item.item}")
+            if item.location == START_INVENTORY_LOCATION and item.player == 0:
+                logger.info(f"Received: {name} (starting inventory)")
+                continue
+            sender = self.player_names.get(item.player, f"player {item.player}")
+            if item.player == self.slot:
+                sender = "yourself"
+            where = ""
+            try:
+                location = self.location_names.lookup_in_slot(item.location, item.player)
+                if location and not location.startswith("Unknown"):
+                    where = f" ({location})"
+            except Exception:  # noqa: BLE001 - data package missing: leave out the location
+                pass
+            logger.info(f"Received: {name} from {sender}{where}")
+        self._announced = len(items)
 
     def make_gui(self):
         ui = super().make_gui()
@@ -126,12 +192,12 @@ class MP3Context(CommonContext):
         return (self.slot is not None and self.server is not None and self.server.socket is not None
                 and not self.server.socket.closed)
 
-    # ---- Location-Checks ------------------------------------------------------------------------------------- #
+    # ---- location checks --------------------------------------------------------------------------------------- #
 
     async def report_locations(self, pickup_indices: set[int]) -> set[int]:
-        """Meldet neu erkannte Orte. Jeder Ort wird höchstens einmal gesendet (``locations_checked``); vom Server
-        schon als erledigt gemeldete Orte werden nicht noch einmal gesendet. Ohne Server-Verbindung werden die Orte
-        vorgemerkt; CommonClient schickt ``locations_checked`` beim nächsten ``Connected`` mit."""
+        """Reports newly detected locations. Each location is sent at most once (``locations_checked``); locations
+        the server already reported as checked are not sent again. Without a server connection the locations are
+        noted; CommonClient sends ``locations_checked`` with the next ``Connected``."""
         ids = {self.table.location_id(i) for i in pickup_indices}
         new = ids - self.locations_checked
         if not new:
@@ -139,9 +205,9 @@ class MP3Context(CommonContext):
         self.locations_checked |= new
         for location_id in sorted(new):
             index = location_id - self.table.base_id
-            logger.info(f"Ort {index} eingesammelt: {self.table.names.get(index, location_id)}")
+            logger.info(f"Location {index} collected: {self.table.names.get(index, location_id)}")
         if not self.server_connected:
-            logger.info(f"{len(new)} Ort(e) vorgemerkt, werden nach dem Verbinden mit dem Server gesendet.")
+            logger.info(f"{len(new)} location(s) noted, they will be sent after connecting to the server.")
             return set()
         to_send = new - self.checked_locations
         if self.server_locations:
@@ -150,19 +216,87 @@ class MP3Context(CommonContext):
             await self.send_msgs([{"cmd": "LocationChecks", "locations": sorted(to_send)}])
         return to_send
 
-    # ---- Item-Vergabe (T07) ---------------------------------------------------------------------------------- #
+    # ---- seed check (T18 part 2) ------------------------------------------------------------------------------- #
 
-    async def give_items(self, state: GameState) -> None:
-        """SCHNITTSTELLE T07: Item-Vergabe per Soll/Ist-Abgleich (SPEC E9, E11).
-
-        Wird in jeder Abfrage aufgerufen, in der der Spieler ingame ist und der Flag-Block gelesen wurde
-        (``state.ingame``). Schreiben erst, wenn ``state.inventory_valid`` (PowerBeam.capacity > 0, E9).
-        Empfangene Items: ``self.items_received``, Startitems/Wirkung: ``self.slot_data``, Schreiben:
-        ``self.memory.write`` (prüft die Game-ID). In T06 absichtlich leer: es wird nichts geschrieben.
-        """
+    def seed_identity(self) -> tuple[str, int] | None:
+        """``(seed_name, slot)`` the ISO is checked against: the connected server, otherwise the last successful
+        connection (locations detected offline only go to that slot; CommonClient clears them on a switch)."""
+        if self.server_connected and self.server_seed_name and self.slot:
+            return self.server_seed_name, self.slot
+        identity = getattr(self, "connected_identity", None)
+        if identity:
+            seed_name, _team, slot = identity
+            if seed_name and slot:
+                return seed_name, slot
         return None
 
-    # ---- Dolphin-Schleife ------------------------------------------------------------------------------------ #
+    def update_seed_check(self) -> SeedCheckResult:
+        before = self.seed_check.result
+        result = self.seed_check.update(self.memory, self.seed_identity())
+        if result != before:
+            level = logging.INFO if result.status in (SeedStatus.OK, SeedStatus.WAITING) else logging.ERROR
+            logger.log(level, result.message())
+            if before.ok:
+                # other ISO or other seed/slot: what was detected belonged to the old game
+                self.detector.reset()
+                self.giver.reset()
+        return result
+
+    # ---- item giving (T07) ------------------------------------------------------------------------------------- #
+
+    def counted_items(self) -> list[str]:
+        """All items that go into the target: starting items (``slot_data``) + received items (E11)."""
+        starting = self.slot_data.get("starting_items") or starting_names()
+        received: list[tuple[str, int]] = []
+        for item in self.items_received:
+            name = ITEM_ID_TO_NAME.get(item.item)
+            if name is None or name not in ITEM_EFFECTS:
+                if item.item not in self._unknown_items:
+                    self._unknown_items.add(item.item)
+                    logger.error(f"Received item {item.item} is unknown to this client and will not be given.")
+                continue
+            received.append((name, item.location))
+        return effective_items(starting, received)
+
+    async def give_items(self, state: GameState) -> None:
+        """Item giving by target/current comparison (SPEC E9, E11, ``give.ItemGiver``).
+
+        Only with a server connection (``items_received`` is empty otherwise) and a valid seed ID. The giver only
+        writes once ``state.inventory_valid`` (PowerBeam.capacity > 0, E9).
+        """
+        if not self.seed_check.result.ok or not self.server_connected:
+            self.giver.reset()
+            return
+        self.giver.step(state, self.counted_items())
+
+    def inventory_lines(self) -> list[str]:
+        giver = self.giver
+        if not giver.last_targets:
+            return ["No comparison yet (not ingame, seed not checked or no server connection)."]
+        blocked = giver.blocked()
+        lines = [f"Item comparison: {len(self.items_received)} items received, {giver.writes_total} writes, "
+                 f"{giver.failures_total} failures"]
+        for slot, target in sorted(giver.last_targets.items()):
+            current = giver.last_inventory.get(slot, (0, 0))
+            note = "ok" if desired_value(target, current) == current else "missing"
+            if slot in giver.given_up:
+                note = "given up (game resets it)"
+            elif slot in blocked:
+                note = f"blocked for {blocked[slot]:.0f} s"
+            lines.append(f"  {slot_label(slot)} (slot {slot}, {target.rule}): target {target.amount}/{target.capacity}, "
+                         f"current {current[0]}/{current[1]} - {note}")
+        return lines
+
+    async def check_goal(self, state: GameState) -> None:
+        """Goal (T17 open, ``goal.GoalDetector``): send ``CLIENT_GOAL`` the first time it is detected."""
+        if self.finished_game or not self.goal.available or not self.server_connected:
+            return
+        if self.goal.reached(self.memory, state):
+            self.finished_game = True
+            logger.info(f"Goal reached: {self.goal.goal_event}")
+            await self.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
+
+    # ---- Dolphin loop ------------------------------------------------------------------------------------------ #
 
     def _status(self, message: str, level: int = logging.INFO) -> None:
         self.dolphin_status = message
@@ -175,45 +309,49 @@ class MP3Context(CommonContext):
         state = self.game_state
         if state is not None and self.memory.connected:
             if state.ingame:
-                lines.append(f"Ingame, Welt {self.table.world_name(state.world_id)}, "
+                lines.append(f"Ingame, world {self.table.world_name(state.world_id)}, "
                              f"ItemPercentage {state.item_percentage}")
             else:
-                lines.append(f"Nicht ingame: {state.reason}")
-        lines.append(f"Orte erkannt: {len(self.locations_checked)}, Lernmodus {'an' if self.learning.enabled else 'aus'}")
+                lines.append(f"Not ingame: {state.reason}")
+        lines.append(self.seed_check.result.message())
+        lines.append(f"Locations detected: {len(self.locations_checked)}, items received: {len(self.items_received)}, "
+                     f"inventory writes: {self.giver.writes_total}, "
+                     f"learning mode {'on' if self.learning.enabled else 'off'}")
         return "\n".join(lines)
 
     def _leave_game(self) -> None:
-        """Menü, Laden oder Verbindungsabbruch: alles vergessen, was an der Spielsitzung hängt."""
+        """Menu, loading or lost connection: forget everything tied to the game session."""
         self.finder.reset()
         self.detector.reset_pending()
         self.learning.reset()
+        self.giver.reset()
         self.current_world = None
         self._was_ingame = False
 
     async def poll_once(self) -> float:
-        """Eine Abfrage. Liefert die Wartezeit bis zur nächsten."""
+        """One poll. Returns the delay until the next one."""
         if not self.memory.connected:
-            if self._was_ingame or self.dolphin_status.startswith("Mit Dolphin verbunden"):
-                self._status("Verbindung zu Dolphin verloren, verbinde neu ...", logging.WARNING)
+            if self._was_ingame or self.dolphin_status.startswith("Connected to Dolphin"):
+                self._status("Lost connection to Dolphin, reconnecting ...", logging.WARNING)
             self._leave_game()
             self.game_state = None
             result = self.memory.connect()
             if result.status is not ConnectStatus.CONNECTED:
                 level = logging.ERROR if result.status is ConnectStatus.WRONG_GAME else logging.INFO
-                self._status(result.message + f" Neuer Versuch in {RECONNECT_DELAY:.0f} s.", level)
+                self._status(result.message + f" Next attempt in {RECONNECT_DELAY:.0f} s.", level)
                 return RECONNECT_DELAY
             self._status(result.message)
         try:
             if not self.memory.check_game_id():
                 self._leave_game()
-                self._status(f"Game-ID hat sich geändert ({self.memory.last_game_id!r}). Getrennt, nichts wird "
-                             f"geschrieben.", logging.ERROR)
+                self._status(f"Game ID changed ({self.memory.last_game_id!r}). Disconnected, nothing will be "
+                             f"written.", logging.ERROR)
                 return RECONNECT_DELAY
             state = read_game_state(self.memory)
             self.game_state = state
             if not state.ingame:
                 if self._was_ingame:
-                    logger.info(f"Nicht mehr ingame ({state.reason}), pausiere.")
+                    logger.info(f"No longer ingame ({state.reason}), pausing.")
                     self._leave_game()
                 return self.poll_interval
             if not self._was_ingame:
@@ -221,41 +359,49 @@ class MP3Context(CommonContext):
                 self._was_ingame = True
             if state.world_id != self.current_world:
                 if self.current_world is not None:
-                    logger.info(f"Weltwechsel: {self.table.world_name(self.current_world)} -> "
+                    logger.info(f"World change: {self.table.world_name(self.current_world)} -> "
                                 f"{self.table.world_name(state.world_id)}")
                 self.current_world = state.world_id
                 self.detector.reset_pending()
-            if not self.table.has_world(state.world_id):
-                return self.poll_interval  # Welt ohne Orte (z. B. Phaaze)
-            flag_read = self.finder.read_flags(state.world_id)
-            if flag_read is None:
-                return self.poll_interval  # Block (noch) nicht gefunden, erneute Suche gedrosselt
-            new = self.detector.update(self.table.collected(state.world_id, flag_read.flags))
-            if new:
-                await self.report_locations(new)
-            self.learning.update(state.world_id, flag_read.flags, state.item_percentage, state.inventory_valid,
-                                 flag_read.blocks, flag_read.disagree)
+            seed = self.update_seed_check()
+            await self.poll_checks(state, seed.ok)
             await self.give_items(state)
+            if seed.ok:
+                await self.check_goal(state)
             return self.poll_interval
         except ConnectionLost as exc:
             self.memory.disconnect()
             self._leave_game()
-            self._status(f"Verbindung zu Dolphin verloren ({exc}). Neuer Versuch in {RECONNECT_DELAY:.0f} s.",
+            self._status(f"Lost connection to Dolphin ({exc}). Next attempt in {RECONNECT_DELAY:.0f} s.",
                          logging.WARNING)
             return RECONNECT_DELAY
         except MemoryAccessError as exc:
-            # ungültiger Zeiger mitten im Laden o. Ä.: diese Abfrage verwerfen
-            logger.debug(f"Abfrage verworfen: {exc}")
+            # invalid pointer in the middle of loading or similar: drop this poll
+            logger.debug(f"Poll dropped: {exc}")
             self._leave_game()
             return self.poll_interval
 
+    async def poll_checks(self, state: GameState, seed_ok: bool) -> None:
+        """Read the world's flag block, detect locations (only with a matching seed ID), learning mode."""
+        if not self.table.has_world(state.world_id):
+            return  # world without locations (e.g. Phaaze)
+        flag_read = self.finder.read_flags(state.world_id)
+        if flag_read is None:
+            return  # block not found (yet), rescan is throttled
+        if seed_ok:
+            new = self.detector.update(self.table.collected(state.world_id, flag_read.flags))
+            if new:
+                await self.report_locations(new)
+        self.learning.update(state.world_id, flag_read.flags, state.item_percentage, state.inventory_valid,
+                             flag_read.blocks, flag_read.disagree)
+
     async def dolphin_sync_loop(self) -> None:
-        logger.info("Starte Dolphin-Verbindung. Status: /dolphin")
+        logger.info("Starting Dolphin connection. Status: /dolphin")
         while not self.exit_event.is_set():
             try:
                 delay = await self.poll_once()
-            except Exception:  # noqa: BLE001 - die Schleife darf nie sterben
-                logger.error("Unerwarteter Fehler in der Dolphin-Schleife:\n" + traceback.format_exc())
+            except Exception:  # noqa: BLE001 - the loop must never die
+                logger.error("Unexpected error in the Dolphin loop:\n" + traceback.format_exc())
                 self.memory.disconnect()
                 self._leave_game()
                 delay = RECONNECT_DELAY
@@ -269,12 +415,12 @@ class MP3Context(CommonContext):
 def main(*args: str) -> None:
     Utils.init_logging("MetroidPrime3Client", exception_logger="Client")
     parser = get_base_parser(description="Metroid Prime 3 Client (Dolphin/PrimeHack, PAL RM3P01)")
-    parser.add_argument("--name", default=None, help="Slot-Name")
+    parser.add_argument("--name", default=None, help="slot name")
     parser.add_argument("--poll-interval", type=float, default=DEFAULT_POLL_INTERVAL,
-                        help=f"Abfrage-Intervall in Sekunden (Standard {DEFAULT_POLL_INTERVAL})")
-    parser.add_argument("--no-learning", action="store_true", help="Lernmodus (E19) ausschalten")
-    parser.add_argument("--learning-log", default=None, help="Pfad der Lernmodus-Logdatei (JSON-Zeilen)")
-    parser.add_argument("url", nargs="?", help="Archipelago-URL archipelago://name:pass@host:port")
+                        help=f"poll interval in seconds (default {DEFAULT_POLL_INTERVAL})")
+    parser.add_argument("--no-learning", action="store_true", help="turn off the learning mode (E19)")
+    parser.add_argument("--learning-log", default=None, help="path of the learning mode log file (JSON lines)")
+    parser.add_argument("url", nargs="?", help="Archipelago URL archipelago://name:pass@host:port")
     parsed = parser.parse_args(args)
     from CommonClient import handle_url_arg
     parsed = handle_url_arg(parsed, parser=parser)
@@ -284,7 +430,7 @@ def main(*args: str) -> None:
                          learning=not parsed.no_learning, learning_log=parsed.learning_log)
         if parsed.name:
             ctx.auth = parsed.name
-        logger.info(f"Lernmodus {'an' if ctx.learning.enabled else 'aus'}, Logdatei: {ctx.learning.log_path}")
+        logger.info(f"Learning mode {'on' if ctx.learning.enabled else 'off'}, log file: {ctx.learning.log_path}")
         ctx.server_task = asyncio.create_task(server_loop(ctx), name="ServerLoop")
         if gui_enabled:
             ctx.run_gui()

@@ -1,34 +1,34 @@
-"""Suche des 1024-Byte-Flag-Blocks je Welt im Heap (SPEC E8, docs/AP_LIVE_TESTS.md Test D, docs/AP_SAVW_FORMAT.md 4).
+"""Search for the 1024-byte flag block of each world in the heap (SPEC E8, docs/AP_LIVE_TESTS.md test D,
+docs/AP_SAVW_FORMAT.md 4).
 
-Aufbau ab ``W`` (Adresse der MLVL-ID):
+Layout from ``W`` (address of the MLVL ID):
 
-| Offset      | Inhalt                                                                       | geprüft |
-|-------------|------------------------------------------------------------------------------|---------|
-| ``W - 4``   | ``0xEAEAEAEA`` (Wächter des Allokators)                                     | ja      |
-| ``W + 0x00``| MLVL-ID der Welt (``u64``)                                                   | ja      |
-| ``W + 0x08``| Zeiger auf Ressourcen-Deskriptor: ``"SAVW"`` bei +8, SAVW-ID (``u64``) bei +16 | ja      |
-| ``W + 0x10``| Zeiger auf das geparste SAVW-Objekt: Länge von Liste 1 (``u32``) bei +0x10   | ja      |
-| ``W + 0x18``| ``0x400`` (Anzahl Flags)                                                     | ja      |
-| ``W + 0x1C``| 1024 Byte Flags, Byte ``i`` = Memory Relay ``i`` aus SAVW-Liste 1            |         |
+| Offset      | Content                                                                        | checked |
+|-------------|--------------------------------------------------------------------------------|---------|
+| ``W - 4``   | ``0xEAEAEAEA`` (allocator guard)                                               | yes     |
+| ``W + 0x00``| MLVL ID of the world (``u64``)                                                 | yes     |
+| ``W + 0x08``| pointer to the resource descriptor: ``"SAVW"`` at +8, SAVW ID (``u64``) at +16 | yes     |
+| ``W + 0x10``| pointer to the parsed SAVW object: length of list 1 (``u32``) at +0x10         | yes     |
+| ``W + 0x18``| ``0x400`` (number of flags)                                                    | yes     |
+| ``W + 0x1C``| 1024 flag bytes, byte ``i`` = memory relay ``i`` of SAVW list 1                |         |
 
-Zusätzlich muss der Inhalt plausibel sein: Bytes ab der Länge von SAVW-Liste 1 müssen 0 sein (es gibt dort kein Memory
-Relay). Alle Prüfungen wurden an den 22 T10-Snapshots (MEM1) nachvollzogen.
+In addition the content must be plausible: bytes from the length of SAVW list 1 onwards must be 0 (there is no memory
+relay there). All checks were reproduced on the 22 T10 snapshots (MEM1).
 
-**Befund T10-Snapshots (Nachauswertung T06):**
-- In jedem Snapshot liegen Blöcke **aller 14 Welten** mit Orten gleichzeitig im Speicher, auch nie besuchter
-  (Inhalt dann 0). Unterschieden werden sie über die MLVL-ID.
-- „Pirate Homeworld - Command“ hat ab dem Neuladen (A4) zwei Blöcke mit voller Kopf-Signatur: ``0x80A22E20`` (leer) und
-  ``0x80A11900``, dessen Bytes 670–1019 gesetzt sind (Welt hat nur 209 Relays) – Datenmüll. Die Plausibilitätsprüfung
-  verwirft ihn.
-- Im Snapshot C1 gab es je Welt eine zweite, voll gültige Kopie (``0x811E....``), deren gesetzte Bytes eine
-  **Teilmenge** des Hauptblocks waren (Norion: leer). In C2 war sie wieder weg.
+**Findings T10 snapshots (re-evaluated in T06):**
+- Every snapshot holds blocks of **all 14 worlds** with locations at the same time, even of worlds never visited
+  (content 0). They are told apart by the MLVL ID.
+- "Pirate Homeworld - Command" has two blocks with a full header signature from the reload (A4) on: ``0x80A22E20``
+  (empty) and ``0x80A11900``, whose bytes 670-1019 are set (the world has only 209 relays) - garbage. The plausibility
+  check rejects it.
+- Snapshot C1 had a second, fully valid copy per world (``0x811E....``) whose set bytes were a **subset** of the main
+  block (Norion: empty). In C2 it was gone.
 
-**Annahme bei mehreren gültigen Blöcken einer Welt (wird in T14 live geprüft):**
-Der Client liest **alle** gültigen, plausiblen Blöcke der aktuellen Welt und verknüpft sie per **ODER**: Ein Byte gilt
-als gesetzt, wenn es in irgendeinem davon gesetzt ist. Begründung: Innerhalb eines Spielstands werden Flags nur gesetzt,
-nie gelöscht, und die gesehenen Kopien waren Teilmengen. Risiko: Ein liegengebliebener, noch gültiger Block eines
-**anderen** Spielstands könnte fremde Flags beisteuern. Abweichungen zwischen den Blöcken werden gemeldet
-(``FlagRead.disagree``) und im Lernmodus protokolliert; außerdem entprellt ``CheckDetector`` (2 Abfragen).
+**Assumption for several valid blocks of a world (checked live in T14):**
+The client reads **all** valid, plausible blocks of the current world and merges them with **OR**: a byte counts as set
+if it is set in any of them. Reason: within a save, flags are only set, never cleared, and the copies seen were subsets.
+Risk: a left-over, still valid block of **another** save could contribute foreign flags. Differences between the blocks
+are reported (``FlagRead.disagree``) and logged by the learning mode; ``CheckDetector`` also debounces (2 polls).
 """
 
 from __future__ import annotations
@@ -46,14 +46,14 @@ OFF_DESCRIPTOR = 0x08
 OFF_SAVW_OBJECT = 0x10
 OFF_FLAG_COUNT = 0x18
 OFF_FLAGS = 0x1C
-HEADER_SIZE = OFF_FLAGS + 4  # ab W - 4 gelesen: Wächter + 0x1C Byte Kopf
+HEADER_SIZE = OFF_FLAGS + 4  # read from W - 4: guard + 0x1C header bytes
 
 DESC_FOURCC_OFFSET = 8
 DESC_ID_OFFSET = 16
 SAVW_OBJECT_LIST1_COUNT = 0x10
 
-# MLVL-ID -> (SAVW-ID, Länge von SAVW-Liste 1). Aus PAL RM3P01: SAVW-ID aus MLVL + 0x14, Liste 1 aus der SAVW
-# (apworld/tools/savw_parser.py, T12). Original-ISO und gepatchtes ISO sind gleich.
+# MLVL ID -> (SAVW ID, length of SAVW list 1). From PAL RM3P01: SAVW ID from MLVL + 0x14, list 1 from the SAVW
+# (apworld/tools/savw_parser.py, T12). Original ISO and patched ISO are identical.
 SAVW_INFO: dict[int, tuple[int, int]] = {
     0x37A9E86F0A0CAF6F: (0x64021D5C7A946BD2, 77),  # G.F.S. Olympus
     0x6FB8EF2A9523C343: (0x732E1A63A1122AD3, 149),  # Norion
@@ -78,9 +78,9 @@ DEFAULT_SCAN_RANGES: tuple[tuple[int, int], ...] = ((MEM1_START, MEM1_SIZE),)
 @dataclass
 class FlagRead:
     world_id: int
-    flags: bytes  # ODER aller gültigen Blöcke
-    blocks: tuple[int, ...]  # Adressen W der gelesenen Blöcke
-    disagree: tuple[int, ...] = ()  # Byte-Indizes, die nicht in allen Blöcken gleich sind
+    flags: bytes  # OR of all valid blocks
+    blocks: tuple[int, ...]  # addresses W of the blocks read
+    disagree: tuple[int, ...] = ()  # byte indices that differ between the blocks
 
 
 @dataclass
@@ -90,7 +90,7 @@ class _ScanResult:
 
 
 class FlagBlockFinder:
-    """Findet und merkt sich die Flag-Blöcke; prüft die Signatur bei jeder Abfrage, sucht bei Abweichung neu."""
+    """Finds and remembers the flag blocks; checks the signature on every poll, rescans on a mismatch."""
 
     def __init__(self, memory: MemoryAccess, scan_ranges=DEFAULT_SCAN_RANGES, rescan_interval: float = 2.0,
                  clock: Callable[[], float] = time.monotonic) -> None:
@@ -99,21 +99,21 @@ class FlagBlockFinder:
         self.rescan_interval = rescan_interval
         self.clock = clock
         self.blocks: dict[int, list[int]] = {}
-        self.rejected: dict[int, list[int]] = {}  # Kopf-Signatur ok, Inhalt unplausibel (letzter Suchlauf)
+        self.rejected: dict[int, list[int]] = {}  # header signature ok, content implausible (last scan)
         self.last_scan: float | None = None
         self.scan_count = 0
         self.last_scan_seconds = 0.0
 
     def reset(self) -> None:
-        """Nach Menü/Laden: Adressen vergessen (Blöcke ziehen beim Laden um)."""
+        """After menu/loading: forget the addresses (blocks move when loading)."""
         self.blocks = {}
         self.rejected = {}
         self.last_scan = None
 
-    # ---- Signatur -------------------------------------------------------------------------------------------- #
+    # ---- signature --------------------------------------------------------------------------------------------- #
 
     def validate(self, address: int, world_id: int) -> bool:
-        """Volle Signaturprüfung des Blocks ``W = address`` für ``world_id``."""
+        """Full signature check of the block ``W = address`` for ``world_id``."""
         if address % 4 or not in_ram(address - 4, HEADER_SIZE + FLAG_BLOCK_SIZE):
             return False
         head = self.memory.read(address - 4, HEADER_SIZE)
@@ -138,14 +138,14 @@ class FlagBlockFinder:
 
     @staticmethod
     def plausible(flags: bytes, world_id: int) -> bool:
-        """Hinter der letzten Memory-Relay-Nummer der Welt darf nichts gesetzt sein."""
+        """Nothing may be set behind the last memory relay number of the world."""
         info = SAVW_INFO.get(world_id)
         return info is None or not any(flags[info[1]:])
 
-    # ---- Suche ----------------------------------------------------------------------------------------------- #
+    # ---- search ------------------------------------------------------------------------------------------------ #
 
     def scan(self) -> dict[int, list[int]]:
-        """Durchsucht MEM1 nach den Blöcken **aller** bekannten Welten (ein Durchlauf, ca. 24 MiB lesen)."""
+        """Scans MEM1 for the blocks of **all** known worlds (one pass, reads about 24 MiB)."""
         started = time.perf_counter()
         patterns = {world: GUARD + struct.pack(">Q", world) for world in SAVW_INFO}
         candidates: dict[int, set[int]] = {}
@@ -174,21 +174,21 @@ class FlagBlockFinder:
         return self.blocks
 
     def get(self, world_id: int) -> list[int]:
-        """Gültige Blöcke der Welt. Gemerkte Adressen werden geprüft; fehlt einer oder ist einer ungültig: neu suchen.
-        Wird nichts gefunden, höchstens alle ``rescan_interval`` Sekunden erneut suchen."""
+        """Valid blocks of the world. Remembered addresses are checked; if one is missing or invalid: rescan.
+        If nothing is found, rescan at most every ``rescan_interval`` seconds."""
         cached = self.blocks.get(world_id)
         if cached:
             if all(self.validate(a, world_id) for a in cached):
                 return list(cached)
-            self.scan()  # Block umgezogen oder freigegeben: sofort neu suchen
+            self.scan()  # block moved or freed: rescan at once
             return list(self.blocks.get(world_id, []))
         if self.last_scan is None or self.clock() - self.last_scan >= self.rescan_interval:
             self.scan()
         return list(self.blocks.get(world_id, []))
 
     def read_flags(self, world_id: int) -> FlagRead | None:
-        """Liest alle gültigen Blöcke der Welt (ODER-verknüpft). Die Signatur wird nach dem Lesen noch einmal
-        geprüft, damit kein Block gelesen wird, der zwischendurch freigegeben wurde."""
+        """Reads all valid blocks of the world (merged with OR). The signature is checked again after reading so that
+        no block is read that was freed in between."""
         for _attempt in range(2):
             addresses = self.get(world_id)
             if not addresses:
@@ -197,7 +197,7 @@ class FlagBlockFinder:
             if all(self.validate(a, world_id) for a in addresses) and all(
                     self.plausible(d, world_id) for d in datas):
                 return _merge(world_id, addresses, datas)
-            self.scan()  # Block umgezogen, freigegeben oder unplausibel geworden
+            self.scan()  # block moved, freed or became implausible
         return None
 
 
