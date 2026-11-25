@@ -1,6 +1,6 @@
 # SPEC – Metroid Prime 3 Archipelago (Entwurf)
 
-Stand: 2026-11-23 · Status: **E1–E19 entschieden (E11 unter Vorbehalt T15/T19)**
+Stand: 2026-11-25 · Status: **E1–E20 entschieden**
 
 ## 1. Ziel
 
@@ -81,7 +81,7 @@ Bausteine:
 | E8 | Location-Checks | Flag-Block der Welt (1024 Byte im Heap): Signatur-Suche nach Laden/Weltwechsel, Adresse merken, Signatur bei jeder Abfrage prüfen. Kein DOL-Hook im MVP | angenommen 2026-11-23 (F-01) |
 | E9 | Item-Vergabe | Direktschreiben von Anzahl/Kapazität in `PS + 0x54 + slot*0xC`, nur wenn Spieler ingame (CPlayer-vtable) und `PowerBeam.capacity > 0` | angenommen 2026-11-23 (F-01) |
 | E10 | Remote-Items | Alle 99 Orte geben lokal nichts (`item_type FF FF FF FF`, 0/0). Auch eigene Items kommen vom Server, `items_handling = 0b111` | angenommen 2026-11-23 (F-01) |
-| E11 | Empfangene Items | Kein gespeicherter Index. Soll-Kapazität je Slot = Startitems aus `slot_data` + Wirkung aller empfangenen Items, nur anheben. Hängt an T15 . T11: Kapazitäten werden im Spielstand mit begrenzter Bitbreite gespeichert (Suit-Max 11 → 3 nach Laden); Soll-Werte müssen im gültigen Bereich je Slot liegen | angenommen unter Vorbehalt T15 |
+| E11 | Empfangene Items | Kein gespeicherter Index. Soll-Wert je Slot = Startitems aus `slot_data` + Wirkung aller empfangenen Items, **absolut gesetzt, nur angehoben, auf `max_capacity` der DOL-Tabelle begrenzt** (Spielstand speichert je Slot nur so viele Bits, wie das Maximum braucht; darüber wird abgeschnitten). Ausnahmen (T19): Suit fest auf den gültigen Wert aus `docs/AP_SLOT_LIMITS.md` (Suit-Anzahl 13 friert das Spiel ein); Energy Cells: Anzahl = empfangen − eingesetzt (Slots 52–61), eingesetzte Zellen nie neu geben. Tod/Continue setzt das Inventar auf den Spielstand zurück, der Abgleich gibt danach erneut | angenommen 2026-11-25 (T19/T15) |
 | E12 | Byte↔Ort-Tabelle | Statisch aus SAVW + MREA erzeugt, gilt für alle Seeds, eigenständige Python-Daten, live per Stichprobe geprüft (T12, T13) | angenommen 2026-11-23 (F-01) |
 | E13 | Anzahl Orte | 99 Orte (Pickup-Index 1–99), Ort 0 entfällt | angenommen 2026-11-23 (F-01) |
 | E14 | Pickup-Darstellung | Fremd-Pickups: vorhandenes neutrales Modell, ein gemeinsamer Text „Archipelago-Item“. Eigene Pickups zeigen das echte Item. Texte je Ort nach dem MVP | angenommen 2026-11-23 (F-01) |
