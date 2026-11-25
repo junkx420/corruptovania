@@ -1,16 +1,16 @@
-"""Nur-lesender Parser für die Spieldaten von Metroid Prime 3 (Wii, PAL RM3P01).
+"""Read-only parser for the game data of Metroid Prime 3 (Wii, PAL RM3P01).
 
-Liest aus einem entpackten ISO (Ordner ``DATA/files`` oder ein Ordner, der die
-``*.pak`` direkt enthält):
+Reads from an extracted ISO (folder ``DATA/files`` or a folder that contains the
+``*.pak`` directly):
 
-- PAK (Wii-Container, wie ``PAK.cs`` im Patcher),
-- MLVL (Welt: SAVW-ID, Bereiche mit MREA-ID),
-- MREA (Raum: Skript-Layer mit Objekten, LZO-komprimierte Blöcke),
-- SAVW (Speicher-Beschreibung der Welt, Format siehe ``docs/AP_SAVW_FORMAT.md``).
+- PAK (Wii container, like ``PAK.cs`` in the patcher),
+- MLVL (world: SAVW ID, areas with MREA ID),
+- MREA (room: script layers with objects, LZO-compressed blocks),
+- SAVW (save description of the world, format see ``docs/AP_SAVW_FORMAT.md``).
 
-Keine Abhängigkeit von randovania. Für komprimierte MREA-Blöcke wird ``lzokay``
-benutzt (in der Corruptovania-venv vorhanden). Ohne ``lzokay`` greift ein
-eingebauter LZO1X-Entpacker in reinem Python.
+No dependency on randovania. For compressed MREA blocks ``lzokay`` is used
+(available in the Corruptovania venv). Without ``lzokay`` a built-in pure-Python
+LZO1X decompressor takes over.
 """
 
 from __future__ import annotations
@@ -26,12 +26,12 @@ MREA_MAGIC = 0xDEADBEEF
 
 
 # --------------------------------------------------------------------------- #
-# Hilfen
+# Helpers
 # --------------------------------------------------------------------------- #
 
 
 class Reader:
-    """Kleiner Big-Endian-Leser über einem ``bytes``-Puffer."""
+    """Small big-endian reader over a ``bytes`` buffer."""
 
     def __init__(self, data: bytes, pos: int = 0):
         self.data = data
@@ -60,7 +60,7 @@ class Reader:
     def raw(self, n: int) -> bytes:
         v = self.data[self.pos : self.pos + n]
         if len(v) != n:
-            raise ValueError(f"Datei zu kurz: {n} Byte bei 0x{self.pos:x} erwartet")
+            raise ValueError(f"File too short: expected {n} bytes at 0x{self.pos:x}")
         self.pos += n
         return v
 
@@ -75,7 +75,7 @@ class Reader:
 
 
 def _lzo1x_decompress_py(src: bytes, out_len: int) -> bytes:
-    """LZO1X-1-Entpacker in reinem Python (Rückfall, wenn ``lzokay`` fehlt)."""
+    """Pure-Python LZO1X-1 decompressor (fallback when ``lzokay`` is missing)."""
     out = bytearray()
     ip = 0
     n = len(src)
@@ -83,7 +83,7 @@ def _lzo1x_decompress_py(src: bytes, out_len: int) -> bytes:
     def copy_match(dist: int, length: int) -> None:
         start = len(out) - dist
         if start < 0:
-            raise ValueError("LZO: ungültige Distanz")
+            raise ValueError("LZO: invalid distance")
         for i in range(length):
             out.append(out[start + i])
 
@@ -158,7 +158,7 @@ def _lzo1x_decompress_py(src: bytes, out_len: int) -> bytes:
             ip += 2
             dist += v >> 2
             if dist == 0:
-                break  # Ende-Marke
+                break  # end marker
             dist += 0x4000
             copy_match(dist, length)
             out += src[ip : ip + state]
@@ -169,7 +169,7 @@ def _lzo1x_decompress_py(src: bytes, out_len: int) -> bytes:
         out += src[ip : ip + state]
         ip += state
     if len(out) != out_len:
-        raise ValueError(f"LZO: {len(out)} statt {out_len} Byte entpackt")
+        raise ValueError(f"LZO: decompressed {len(out)} instead of {out_len} bytes")
     return bytes(out)
 
 
@@ -182,8 +182,8 @@ def lzo_decompress(src: bytes, out_len: int) -> bytes:
 
 
 def decompress_mrea_block(data: bytes, uncompressed_size: int) -> bytes:
-    """Entpackt einen MREA-Block: Segmente mit ``i16``-Länge (negativ = roh),
-    je Segment höchstens 0x4000 Byte (``Compression.decompress_mrea_block``)."""
+    """Decompresses an MREA block: segments with ``i16`` length (negative = raw),
+    at most 0x4000 bytes per segment (``Compression.decompress_mrea_block``)."""
     r = Reader(data)
     out = bytearray()
     while len(out) < uncompressed_size:
@@ -195,7 +195,7 @@ def decompress_mrea_block(data: bytes, uncompressed_size: int) -> bytes:
             seg = min(0x4000, uncompressed_size - len(out))
             out += lzo_decompress(r.raw(length), seg)
     if len(out) != uncompressed_size:
-        raise ValueError("MREA-Block hat falsche Länge")
+        raise ValueError("MREA block has wrong length")
     return bytes(out)
 
 
@@ -210,12 +210,12 @@ class PakResource:
     type: str
     asset_id: int
     size: int
-    offset: int  # absoluter Dateioffset
+    offset: int  # absolute file offset
 
 
 class Pak:
-    """Wii-PAK: 0x40 Kopf, 0x40 Inhaltsverzeichnis (STRG/RSHD/DATA), dann die
-    Abschnitte (``PakHeader.cs``, ``TableOfContents.cs``)."""
+    """Wii PAK: 0x40 header, 0x40 table of contents (STRG/RSHD/DATA), then the
+    sections (``PakHeader.cs``, ``TableOfContents.cs``)."""
 
     def __init__(self, path: str):
         self.path = path
@@ -232,7 +232,7 @@ class Pak:
                 sections[cc] = (pos, size)
                 pos += size
             if b"DATA" not in sections or b"RSHD" not in sections:
-                raise ValueError(f"{path}: kein Wii-PAK")
+                raise ValueError(f"{path}: not a Wii PAK")
             f.seek(sections[b"RSHD"][0])
             rshd = Reader(f.read(sections[b"RSHD"][1]))
             f.seek(sections[b"STRG"][0])
@@ -245,7 +245,7 @@ class Pak:
             rid = rshd.u64()
             size = rshd.u32()
             off = rshd.u32()
-            # gleiche ID kann mehrfach vorkommen; erster Eintrag gewinnt
+            # the same ID can occur several times; the first entry wins
             self.resources.setdefault(rid, PakResource(comp == 1, typ, rid, size, data_start + off))
         self.names: dict[str, tuple[str, int]] = {}
         for _ in range(strg.u32()):
@@ -256,14 +256,14 @@ class Pak:
     def read(self, asset_id: int) -> bytes:
         res = self.resources[asset_id]
         if res.compressed:
-            raise NotImplementedError(f"{self.name}: Ressource 0x{asset_id:016X} ist CMPD-komprimiert")
+            raise NotImplementedError(f"{self.name}: resource 0x{asset_id:016X} is CMPD-compressed")
         with open(self.path, "rb") as f:
             f.seek(res.offset)
             return f.read(res.size)
 
 
 class GameFiles:
-    """Alle ``*.pak`` eines entpackten ISO, mit Suche nach Asset-ID."""
+    """All ``*.pak`` of an extracted ISO, with lookup by asset ID."""
 
     def __init__(self, root: str):
         root = os.path.abspath(root)
@@ -272,7 +272,7 @@ class GameFiles:
                 self.files_dir = candidate
                 break
         else:
-            raise FileNotFoundError(f"Keine .pak-Dateien unter {root} (erwartet DATA/files)")
+            raise FileNotFoundError(f"No .pak files under {root} (expected DATA/files)")
         self.paks = [
             Pak(os.path.join(self.files_dir, n))
             for n in sorted(os.listdir(self.files_dir))
@@ -284,7 +284,7 @@ class GameFiles:
             res = pak.resources.get(asset_id)
             if res is not None and (type_ is None or res.type == type_):
                 return pak, res
-        raise KeyError(f"Asset 0x{asset_id:016X} ({type_}) in keinem PAK")
+        raise KeyError(f"Asset 0x{asset_id:016X} ({type_}) not in any PAK")
 
     def read(self, asset_id: int, type_: str | None = None) -> bytes:
         pak, _ = self.find(asset_id, type_)
@@ -299,7 +299,7 @@ class GameFiles:
                     yield pak, res
 
     def names(self, type_: str) -> dict[int, str]:
-        """Asset-ID → Name aus den STRG-Tabellen der PAKs (erster Treffer)."""
+        """Asset ID → name from the STRG tables of the PAKs (first hit)."""
         out: dict[int, str] = {}
         for pak in self.paks:
             for name, (typ, rid) in pak.names.items():
@@ -309,7 +309,7 @@ class GameFiles:
 
 
 # --------------------------------------------------------------------------- #
-# MLVL (Version 0x19, ``MP3MLVL.cs``)
+# MLVL (version 0x19, ``MP3MLVL.cs``)
 # --------------------------------------------------------------------------- #
 
 
@@ -334,10 +334,10 @@ class Mlvl:
 def parse_mlvl(data: bytes, asset_id: int = 0) -> Mlvl:
     r = Reader(data)
     if r.u32() != MLVL_MAGIC:
-        raise ValueError("kein MLVL")
+        raise ValueError("not an MLVL")
     version = r.u32()
     if version != 0x19:
-        raise ValueError(f"MLVL-Version 0x{version:x}, erwartet 0x19 (Corruption)")
+        raise ValueError(f"MLVL version 0x{version:x}, expected 0x19 (Corruption)")
     world_name_id = r.u64()
     r.u32()  # temple_key_world_index
     savw_id = r.u64()
@@ -357,14 +357,14 @@ def parse_mlvl(data: bytes, asset_id: int = 0) -> Mlvl:
 
 
 # --------------------------------------------------------------------------- #
-# MREA (Version 0x1E, ``MREANew.cs``) und Skript-Layer (``ScriptLayer.cs``)
+# MREA (version 0x1E, ``MREANew.cs``) and script layers (``ScriptLayer.cs``)
 # --------------------------------------------------------------------------- #
 
 
 @dataclasses.dataclass(frozen=True)
 class ScriptObject:
     type: str
-    instance_id: int  # volle 32-Bit-ID: Layer << 26 | Bereich << 16 | ID
+    instance_id: int  # full 32-bit ID: layer << 26 | area << 16 | ID
     connections: tuple[tuple[str, str, int], ...]
     properties: bytes
 
@@ -383,7 +383,7 @@ class ScriptObject:
 
 @dataclasses.dataclass(frozen=True)
 class ScriptLayer:
-    index: int  # Index des SCLY-Abschnitts (= Layer-Nummer im Patcher)
+    index: int  # index of the SCLY section (= layer number in the patcher)
     header: bytes
     objects: tuple[ScriptObject, ...]
 
@@ -425,7 +425,7 @@ def _parse_script_layer(index: int, data: bytes) -> ScriptLayer:
 def parse_mrea(data: bytes, asset_id: int = 0) -> Mrea:
     r = Reader(data)
     if r.u32() != MREA_MAGIC:
-        raise ValueError("kein MREA")
+        raise ValueError("not an MREA")
     version = r.u32()
     r.raw(48)  # Transform
     r.u32()  # world model count
@@ -448,18 +448,18 @@ def parse_mrea(data: bytes, asset_id: int = 0) -> Mrea:
         if compressed == 0:
             raw = r.raw(uncompressed)
         else:
-            r.pos += -compressed % 32  # Füllbytes stehen vor den Daten
+            r.pos += -compressed % 32  # padding bytes come before the data
             raw = decompress_mrea_block(r.raw(compressed), uncompressed)
         pos = 0
         for size in section_sizes[len(sections) : len(sections) + n_sections]:
             sections.append(raw[pos : pos + size])
             pos += size
-        # Der Patcher polstert entpackte Blöcke auf 32 Byte, ohne die Abschnittsgröße
-        # anzupassen (MREANew.cs). Rest am Blockende muss Null sein.
+        # The patcher pads decompressed blocks to 32 bytes without adjusting the section
+        # size (MREANew.cs). The rest at the end of the block must be zero.
         if pos > len(raw) or len(raw) - pos >= 32 or raw[pos:].strip(b"\0"):
-            raise ValueError(f"MREA 0x{asset_id:016X}: Block passt nicht zu den Abschnittsgrößen")
+            raise ValueError(f"MREA 0x{asset_id:016X}: block does not match the section sizes")
     if len(sections) != section_count:
-        raise ValueError(f"MREA 0x{asset_id:016X}: {len(sections)} statt {section_count} Abschnitte")
+        raise ValueError(f"MREA 0x{asset_id:016X}: {len(sections)} instead of {section_count} sections")
     first = labels.get("SOBJ")
     layers = []
     if first is not None:
@@ -471,15 +471,15 @@ def parse_mrea(data: bytes, asset_id: int = 0) -> Mrea:
 
 
 # --------------------------------------------------------------------------- #
-# SAVW (Version 6)
+# SAVW (version 6)
 # --------------------------------------------------------------------------- #
 
 
 @dataclasses.dataclass(frozen=True)
 class SavwEntry:
-    """Ein Eintrag der GUID-Listen: 16 Byte GUID + 32-Bit-Instanz-ID.
+    """An entry of the GUID lists: 16-byte GUID + 32-bit instance ID.
 
-    Ein Eintrag aus 20 Nullbytes ist ein Leerplatz (Platz bleibt belegt)."""
+    An entry of 20 zero bytes is an empty slot (the slot stays occupied)."""
 
     guid: bytes
     instance_id: int
@@ -506,12 +506,12 @@ class Savw:
     asset_id: int
     version: int
     area_count: int
-    lists: tuple[tuple[SavwEntry, ...], ...]  # Listen 0, 1, 2 (vor den Scans)
+    lists: tuple[tuple[SavwEntry, ...], ...]  # lists 0, 1, 2 (before the scans)
     scans: tuple[SavwScan, ...]
-    unknown_list: tuple[bytes, ...]  # Abschnitt nach den Scans, in PAL immer leer
+    unknown_list: tuple[bytes, ...]  # section after the scans, always empty in PAL
     variables: tuple[SavwVariable, ...]
-    objects: tuple[SavwEntry, ...]  # letzter Abschnitt (Pickups u. a.)
-    trailing: bytes  # 0xFF-Füllung auf 64 Byte
+    objects: tuple[SavwEntry, ...]  # last section (pickups and others)
+    trailing: bytes  # 0xFF padding to 64 bytes
 
 
 def _entries(r: Reader) -> tuple[SavwEntry, ...]:
@@ -525,10 +525,10 @@ def _entries(r: Reader) -> tuple[SavwEntry, ...]:
 def parse_savw(data: bytes, asset_id: int = 0) -> Savw:
     r = Reader(data)
     if r.u32() != SAVW_MAGIC:
-        raise ValueError("kein SAVW")
+        raise ValueError("not a SAVW")
     version = r.u32()
     if version != 6:
-        raise ValueError(f"SAVW-Version {version}, erwartet 6")
+        raise ValueError(f"SAVW version {version}, expected 6")
     area_count = r.u32()
     lists = tuple(_entries(r) for _ in range(3))
     scans = []
@@ -537,7 +537,7 @@ def parse_savw(data: bytes, asset_id: int = 0) -> Savw:
         scans.append(SavwScan(scan_id, r.u32()))
     n_unknown = r.u32()
     if n_unknown:
-        raise NotImplementedError(f"SAVW 0x{asset_id:016X}: unbekannter Abschnitt mit {n_unknown} Einträgen")
+        raise NotImplementedError(f"SAVW 0x{asset_id:016X}: unknown section with {n_unknown} entries")
     variables = []
     for _ in range(r.u32()):
         name = r.cstr()
@@ -545,5 +545,5 @@ def parse_savw(data: bytes, asset_id: int = 0) -> Savw:
     objects = _entries(r)
     trailing = data[r.pos :]
     if trailing.strip(b"\xff"):
-        raise ValueError(f"SAVW 0x{asset_id:016X}: {len(trailing)} unerwartete Byte am Ende")
+        raise ValueError(f"SAVW 0x{asset_id:016X}: {len(trailing)} unexpected bytes at the end")
     return Savw(asset_id, version, area_count, lists, tuple(scans), (), tuple(variables), objects, trailing)

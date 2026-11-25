@@ -1,34 +1,34 @@
-# AP-Speicher-Mapping: Metroid Prime 3 in Dolphin (T02)
+# AP memory mapping: Metroid Prime 3 in Dolphin (T02)
 
-Stand: 2026-11-23. Grundlage: `randovania/game_connection/connector/corruption_remote_connector.py`,
-`prime_remote_connector.py`, `executor/dolphin_executor.py` und die Versionstabellen aus
-**open-prime-rando 0.15.1** (`venv/Lib/site-packages/open_prime_rando/dol_patching/…`, im Folgenden `OPR/…`).
-Live geprüft mit **PAL `RM3P01`** (Rev 0), Seed `IVG2J7OR` aus T01, Dolphin 2609b, dolphin-memory-engine 1.3.0.
+As of 2026-11-23. Basis: `randovania/game_connection/connector/corruption_remote_connector.py`,
+`prime_remote_connector.py`, `executor/dolphin_executor.py` and the version tables from
+**open-prime-rando 0.15.1** (`venv/Lib/site-packages/open_prime_rando/dol_patching/…`, below `OPR/…`).
+Checked live with **PAL `RM3P01`** (Rev 0), seed `IVG2J7OR` from T01, Dolphin 2609b, dolphin-memory-engine 1.3.0.
 
-> **Kurzfassung**
-> - Für PAL sind Build-String, aktuelle Welt, die Erkennung „ingame/Menü/Laden“ und das Inventar **live bestätigt**.
->   Beim Einsammeln ändern sich `ScrewAttack` von 0/0 auf 1/1 und `ItemPercentage` von 1/101 auf 2/102.
-> - **Randovania kann für MP3 heute weder Items ins Spiel geben noch Location-Checks erkennen.**
->   Beides ist im Connector nicht implementiert (Abschnitte 4 und 5). Für den AP-Client (T06/T07) sind das die
->   zwei Lücken, die neu gebaut werden müssen.
-> - NTSC-U (`RM3E01`) und NTSC-J (`RM3J01`) sind **nur aus Code** belegt und nicht live geprüft.
+> **Summary**
+> - For PAL the build string, current world, the detection "ingame/menu/loading" and the inventory are **confirmed live**.
+>   On collecting, `ScrewAttack` changes from 0/0 to 1/1 and `ItemPercentage` from 1/101 to 2/102.
+> - **Today Randovania can neither give items into the game for MP3 nor detect location checks.**
+>   Neither is implemented in the connector (sections 4 and 5). For the AP client (T06/T07) these are the
+>   two gaps that have to be built new.
+> - NTSC-U (`RM3E01`) and NTSC-J (`RM3J01`) are backed **only by code** and not checked live.
 
-Konventionen:
-- Alle Adressen sind virtuelle Wii-Adressen (MEM1 `0x80000000–0x81800000`, `dolphin_executor.py:15-16`). Alle Werte
-  sind **Big Endian**.
-- `[X]` heißt: 4-Byte-Zeiger an Adresse X lesen. `[X]+off` heißt: Zeiger lesen, dann den Offset addieren.
-  So arbeitet auch der Executor: Eine `MemoryOperation` mit `offset` liest erst den Zeiger an `address` und addiert dann
-  den Offset (`dolphin_executor.py:84-92, 113-132`).
-- Quelle `OPR/corruption/dol_versions.py` = `open_prime_rando/dol_patching/corruption/dol_versions.py`.
+Conventions:
+- All addresses are virtual Wii addresses (MEM1 `0x80000000–0x81800000`, `dolphin_executor.py:15-16`). All values
+  are **big endian**.
+- `[X]` means: read the 4-byte pointer at address X. `[X]+off` means: read the pointer, then add the offset.
+  This is how the executor works too: a `MemoryOperation` with `offset` first reads the pointer at `address` and then adds
+  the offset (`dolphin_executor.py:84-92, 113-132`).
+- Source `OPR/corruption/dol_versions.py` = `open_prime_rando/dol_patching/corruption/dol_versions.py`.
 
 ---
 
-## 1. Versionstabelle (globale Adressen je Region)
+## 1. Version table (global addresses per region)
 
-Quelle: `OPR/corruption/dol_versions.py:6-65`. Der Connector wählt die Version anhand des Build-Strings
+Source: `OPR/corruption/dol_versions.py:6-65`. The connector picks the version by the build string
 (`randovania/game_connection/builder/prime_connector_builder.py:40,64-100`).
 
-| Feld | NTSC-U „Wii NTSC“ (RM3E01) | PAL „Wii PAL“ (RM3P01) | NTSC-J „Wii NTSC-J“ (RM3J01) | Quelle |
+| Field | NTSC-U "Wii NTSC" (RM3E01) | PAL "Wii PAL" (RM3P01) | NTSC-J "Wii NTSC-J" (RM3J01) | Source |
 |---|---|---|---|---|
 | `build_string_address` | `0x805822B0` | `0x805843A8` | `0x80587C2C` | `dol_versions.py:10,34,51` |
 | `build_string` | `…2007/07/27 13:13 Build v3.436 (MP3)` | `…2007/08/24 16:52 Build v3.453 (mp3)` | `…2007/11/12 14:15 Build v3.495 (jpn)` | `dol_versions.py:11,35,52` |
@@ -39,43 +39,43 @@ Quelle: `OPR/corruption/dol_versions.py:6-65`. Der Connector wählt die Version 
 | `powerup_functions.incr_pickup` | `0x801913A0` | `0x801920B0` | `0x80193554` | `dol_versions.py:27,44,61` |
 | `powerup_functions.decr_pickup` | `0x8019151C` | `0x8019222C` | `0x801936D0` | `dol_versions.py:28,45,62` |
 | `string_display` | `None` | `None` | `None` | `dol_versions.py:17,41,58` |
-| `sda2_base` / `sda13_base` | `0x806869C0` / `0x806801C0` | `0x80688FE0` / `0x806827C0` | `0x8068C840` / `0x80686000` | `dol_versions.py:12-13,36-37,53-54` (vom Connector nicht benutzt) |
-| **Status** | **nur aus Code** | **live bestätigt** (bis auf `powerup_functions`, `sda*`) | **nur aus Code** | |
+| `sda2_base` / `sda13_base` | `0x806869C0` / `0x806801C0` | `0x80688FE0` / `0x806827C0` | `0x8068C840` / `0x80686000` | `dol_versions.py:12-13,36-37,53-54` (not used by the connector) |
+| **Status** | **code only** | **confirmed live** (except `powerup_functions`, `sda*`) | **code only** | |
 
 ---
 
-## 2. Feld-Tabelle (Pointer-Ketten)
+## 2. Field table (pointer chains)
 
-PAL-Beispieladressen stammen aus dem Live-Lauf. Die dynamischen Adressen (Heap) ändern sich je nach Sitzung.
+PAL example addresses come from the live run. The dynamic addresses (heap) change from session to session.
 
-| Feld | Adresse / Pointer-Kette | Typ | Region | Status | Quelle (Datei:Zeile) |
+| Field | Address / pointer chain | Type | Region | Status | Source (file:line) |
 |---|---|---|---|---|---|
-| Game-ID | `0x80000000`, 6 Byte | ASCII | alle | PAL live: `RM3P01` | Dolphin-Standard (nicht vom Connector gelesen) |
-| Build-String (Versionserkennung) | `build_string_address`, `len(build_string)` Byte | ASCII | s. Tab. 1 | PAL live: passt | `prime_remote_connector.py:86-104`, `prime_connector_builder.py:67-100` |
-| Layout-UUID | Bytes `[6:22]` des Build-Strings | 16 Byte UUID | alle | PAL live: **nicht gesetzt** (Original-Text `roidBuildInfo!#$`) → `INVALID_UUID` | `prime_remote_connector.py:92-101` |
-| Aktuelle Welt (MLVL-Asset-ID) | `[game_state_pointer] + 0x8`, 8 Byte | `u64` (`>Q`) | s. Tab. 1 | PAL live: Valhalla, Norion, FrontEnd | `corruption_remote_connector.py:48-49,64-65,72`; Abgleich `prime_remote_connector.py:110-136` |
-| „Pending-Op“-Byte | `cstate_manager_global + 0x2`, 1 Byte | `u8` | s. Tab. 1 | PAL live: **immer `0xFF`** (Menü, Laden, ingame) | `corruption_remote_connector.py:73,87-88`, `prime_remote_connector.py:254` |
-| CPlayer-Zeiger | `[cstate_manager_global + 0x28] + 0x2184`, 4 Byte | Zeiger | s. Tab. 1 | PAL live: Menü/Laden = `0`, ingame z. B. `0x80B81AE0` | `corruption_remote_connector.py:67-74,77` |
-| CPlayer-vtable (Ingame-Prüfung) | `[[cstate_manager_global + 0x28] + 0x2184]`, 4 Byte | Zeiger | s. Tab. 1 | PAL live: `0x80595238` = erwartet | `corruption_remote_connector.py:79-85`, `prime_remote_connector.py:127-133` |
-| CPlayerState-Basis | `[game_state_pointer] + 0x24` = Zeiger-Slot; `PS = [[game_state_pointer] + 0x24]` | Zeiger | s. Tab. 1 | PAL live: `PS = 0x80995B20` (in allen Lesungen gleich) | `corruption_remote_connector.py:95-102` |
-| Inventar-Slot `item_id` | `PS + 0x54 + item_id * 0xC`, 8 Byte | `u32 amount`, `u32 capacity` (`>II`) | alle | PAL live, s. Abschnitt 3 | `corruption_remote_connector.py:37-41,104-111`, `prime_remote_connector.py:151-166` |
-| Item geben (Kapazität) | Funktionsaufruf `add_power_up(PlayerState, item_id, delta)` | PPC-Funktion | s. Tab. 1 | nur aus Code, **in MP3 nicht nutzbar** (Abschnitt 4) | `OPR/all_prime_dol_patches.py:202-213`; `corruption_remote_connector.py:117-125` |
-| Item geben (Menge) | `incr_pickup` / `decr_pickup(PlayerState, item_id, n)` | PPC-Funktion | s. Tab. 1 | nur aus Code, **in MP3 nicht nutzbar** | `OPR/all_prime_dol_patches.py:216-227` |
+| Game ID | `0x80000000`, 6 bytes | ASCII | all | PAL live: `RM3P01` | Dolphin standard (not read by the connector) |
+| Build string (version detection) | `build_string_address`, `len(build_string)` bytes | ASCII | see table 1 | PAL live: matches | `prime_remote_connector.py:86-104`, `prime_connector_builder.py:67-100` |
+| Layout UUID | bytes `[6:22]` of the build string | 16-byte UUID | all | PAL live: **not set** (original text `roidBuildInfo!#$`) → `INVALID_UUID` | `prime_remote_connector.py:92-101` |
+| Current world (MLVL asset ID) | `[game_state_pointer] + 0x8`, 8 bytes | `u64` (`>Q`) | see table 1 | PAL live: Valhalla, Norion, FrontEnd | `corruption_remote_connector.py:48-49,64-65,72`; comparison `prime_remote_connector.py:110-136` |
+| "Pending op" byte | `cstate_manager_global + 0x2`, 1 byte | `u8` | see table 1 | PAL live: **always `0xFF`** (menu, loading, ingame) | `corruption_remote_connector.py:73,87-88`, `prime_remote_connector.py:254` |
+| CPlayer pointer | `[cstate_manager_global + 0x28] + 0x2184`, 4 bytes | pointer | see table 1 | PAL live: menu/loading = `0`, ingame e.g. `0x80B81AE0` | `corruption_remote_connector.py:67-74,77` |
+| CPlayer vtable (ingame check) | `[[cstate_manager_global + 0x28] + 0x2184]`, 4 bytes | pointer | see table 1 | PAL live: `0x80595238` = expected | `corruption_remote_connector.py:79-85`, `prime_remote_connector.py:127-133` |
+| CPlayerState base | `[game_state_pointer] + 0x24` = pointer slot; `PS = [[game_state_pointer] + 0x24]` | pointer | see table 1 | PAL live: `PS = 0x80995B20` (the same in all reads) | `corruption_remote_connector.py:95-102` |
+| Inventory slot `item_id` | `PS + 0x54 + item_id * 0xC`, 8 bytes | `u32 amount`, `u32 capacity` (`>II`) | all | PAL live, see section 3 | `corruption_remote_connector.py:37-41,104-111`, `prime_remote_connector.py:151-166` |
+| Give item (capacity) | function call `add_power_up(PlayerState, item_id, delta)` | PPC function | see table 1 | code only, **not usable in MP3** (section 4) | `OPR/all_prime_dol_patches.py:202-213`; `corruption_remote_connector.py:117-125` |
+| Give item (amount) | `incr_pickup` / `decr_pickup(PlayerState, item_id, n)` | PPC function | see table 1 | code only, **not usable in MP3** | `OPR/all_prime_dol_patches.py:216-227` |
 
-Herleitung des Inventar-Offsets (`corruption_remote_connector.py:37-41`):
-`0x50` (Powerup-Vektor in CPlayerState) + `0x4` (Datenzeiger/Größe des Vektors) + `item_id * 0xC` (Größe eines
-Eintrags). Gelesen werden nur die ersten 8 Byte eines Eintrags (`amount`, `capacity`). Was in den restlichen 4 Byte
-steht, ist nicht dokumentiert.
+Derivation of the inventory offset (`corruption_remote_connector.py:37-41`):
+`0x50` (powerup vector in CPlayerState) + `0x4` (data pointer/size of the vector) + `item_id * 0xC` (size of an
+entry). Only the first 8 bytes of an entry are read (`amount`, `capacity`). What is in the remaining 4 bytes
+is not documented.
 
 ---
 
-## 3. Inventar: Item-ID → Offset
+## 3. Inventory: item ID → offset
 
-Item-IDs aus `randovania/games/prime3/logic_database/header.json` (`resource_database.items[*].extra.item_id`).
-Offset relativ zu `PS`. PAL-Absolutadressen gelten für `PS = 0x80995B20` aus dem Live-Lauf. Nur IDs `< 1000` liegen im
-Speicher (`prime_remote_connector.py:155`). IDs ab 1000 sind reine Logik-Ressourcen.
+Item IDs from `randovania/games/prime3/logic_database/header.json` (`resource_database.items[*].extra.item_id`).
+Offset relative to `PS`. PAL absolute addresses apply to `PS = 0x80995B20` from the live run. Only IDs `< 1000` are in
+memory (`prime_remote_connector.py:155`). IDs from 1000 on are pure logic resources.
 
-| item_id | Name (`header.json`) | Offset von `PS` | PAL-Adresse (live) | max. Kapazität |
+| item_id | Name (`header.json`) | Offset from `PS` | PAL address (live) | max. capacity |
 |---|---|---|---|---|
 | 0 | PowerBeam | `+0x054` | `0x80995B74` | 1 |
 | 1 | PlasmaBeam | `+0x060` | `0x80995B80` | 1 |
@@ -94,13 +94,13 @@ Speicher (`prime_remote_connector.py:155`). IDs ab 1000 sind reine Logik-Ressour
 | 14 | XRayVisor | `+0x0FC` | `0x80995C1C` | 1 |
 | 15 | DoubleJump (Space Jump Boots) | `+0x108` | `0x80995C28` | 1 |
 | 16 | ScrewAttack | `+0x114` | `0x80995C34` | 1 |
-| 17 | SuitType | `+0x120` | `0x80995C40` | 6 (Connector: ≥5 = „hat Item“, `corruption_remote_connector.py:142-152`) |
-| 18 | Energy | `+0x12C` | `0x80995C4C` | 1499 (live 0/0, obwohl das HUD 99 zeigt: **nicht** die Lebensenergie) |
+| 17 | SuitType | `+0x120` | `0x80995C40` | 6 (connector: ≥5 = "has item", `corruption_remote_connector.py:142-152`) |
+| 18 | Energy | `+0x12C` | `0x80995C4C` | 1499 (live 0/0 although the HUD shows 99: **not** the health energy) |
 | 19 | HypermodeEnergy | `+0x138` | `0x80995C58` | 0 |
 | 20 | EnergyTank | `+0x144` | `0x80995C64` | 14 |
 | 21 | ItemPercentage | `+0x150` | `0x80995C70` | 255 |
 | 22 | Fuses (Energy Cells Total) | `+0x15C` | `0x80995C7C` | 9 |
-| 23–31 | Fuse1 … Fuse9 (Energy Cell 1–9) | `+0x168` … `+0x1C8` (Schritt `0xC`) | `0x80995C88` … `0x80995CE8` | 1 |
+| 23–31 | Fuse1 … Fuse9 (Energy Cell 1–9) | `+0x168` … `+0x1C8` (step `0xC`) | `0x80995C88` … `0x80995CE8` | 1 |
 | 32 | MorphBall | `+0x1D4` | `0x80995CF4` | 1 |
 | 33 | BoostBall | `+0x1E0` | `0x80995D00` | 1 |
 | 34 | SpiderBall | `+0x1EC` | `0x80995D0C` | 1 |
@@ -114,173 +114,173 @@ Speicher (`prime_remote_connector.py:155`). IDs ab 1000 sind reine Logik-Ressour
 | 51 | CommandVisorJammed | `+0x2B8` | `0x80995DD8` | 1 |
 | 52 | EnergyCellsUsed | `+0x2C4` | `0x80995DE4` | 9 |
 | 62–69 | Stat_EnemiesKilled, Stat_ShotsFired, Stat_DamageReceived, Stat_DataSaves, Stat_HypermodeUses, Stat_CommandoKills, Stat_TinCanHighScore, Stat_TinCanCurrentScore | `+0x33C` … `+0x390` | `0x80995E5C` … `0x80995EB0` | 99999 |
-| 1000–1003 | MissileLauncher, ShipMissileLauncher, TemporaryMissile, TemporaryShipMissile | – (nicht im Speicher) | – | – |
+| 1000–1003 | MissileLauncher, ShipMissileLauncher, TemporaryMissile, TemporaryShipMissile | – (not in memory) | – | – |
 
-Die IDs 43, 47 und 53–61 fehlen in `header.json`. Die Slots existieren im Array, weil es bis mindestens ID 69 reicht. Ihr Inhalt
-wurde nicht geprüft.
+IDs 43, 47 and 53–61 are missing in `header.json`. The slots exist in the array because it reaches at least ID 69. Their content
+was not checked.
 
-Hinweis zu `get_inventory` (`prime_remote_connector.py:154-160`): Die Memory-Ops werden nur für IDs `< 1000` erzeugt,
-anschließend aber mit **allen** Items gezippt. Das klappt nur, weil die IDs ab 1000 in `header.json` am Ende stehen.
+Note on `get_inventory` (`prime_remote_connector.py:154-160`): the memory ops are only created for IDs `< 1000`,
+but are then zipped with **all** items. This only works because the IDs from 1000 on come last in `header.json`.
 
 ---
 
-## 4. Items ins Spiel geben (Mechanismus von Randovania)
+## 4. Giving items into the game (Randovania's mechanism)
 
-**Für MP3 nicht implementiert.** Der allgemeine Prime-Mechanismus (MP1/MP2) ist eine *Remote Code Execution*:
+**Not implemented for MP3.** The general Prime mechanism (MP1/MP2) is a *remote code execution*:
 
-1. Der Connector baut PPC-Instruktionen, die `add_power_up` und `incr_pickup` mit `item_id` und Delta aufrufen
-   (`OPR/all_prime_dol_patches.py:180-227`, aufgerufen in `corruption_remote_connector.py:113-126`).
-2. `create_remote_execution_body` assembliert diese Instruktionen an die Adresse
-   `string_display.update_hint_state + Prolog` (`OPR/all_prime_dol_patches.py:242-265`).
-3. Er schreibt den Code dorthin und setzt `cstate_manager_global + 0x2 = 0x01` (`prime_remote_connector.py:246-258`).
-4. Ein vom Patcher in die DOL eingebauter Hook (`apply_remote_execution_patch`, `OPR/all_prime_dol_patches.py:238-239`)
-   prüft dieses Byte in jedem Frame, führt den Code aus und setzt das Byte auf `0` zurück
+1. The connector builds PPC instructions that call `add_power_up` and `incr_pickup` with `item_id` and delta
+   (`OPR/all_prime_dol_patches.py:180-227`, called in `corruption_remote_connector.py:113-126`).
+2. `create_remote_execution_body` assembles these instructions at the address
+   `string_display.update_hint_state + prologue` (`OPR/all_prime_dol_patches.py:242-265`).
+3. It writes the code there and sets `cstate_manager_global + 0x2 = 0x01` (`prime_remote_connector.py:246-258`).
+4. A hook built into the DOL by the patcher (`apply_remote_execution_patch`, `OPR/all_prime_dol_patches.py:238-239`)
+   checks this byte in every frame, executes the code and resets the byte to `0`
    (`OPR/all_prime_dol_patches.py:66-128`).
-5. Gezählt wird über ein „Magic Item“: Seine `capacity` ist die Zahl der bereits gegebenen Remote-Items
+5. Counting is done via a "magic item": its `capacity` is the number of remote items already given
    (`prime_remote_connector.py:201-233`).
 
-Warum das in MP3 nicht geht:
-- `string_display = None` für alle drei MP3-Versionen (`dol_versions.py:17,41,58`). Es gibt also weder eine Zieladresse
-  noch einen HUD-Text.
-- `remote_execution_patch_start` und `_load_player_state` werfen für `Game.CORRUPTION` einen `ValueError`
+Why this does not work in MP3:
+- `string_display = None` for all three MP3 versions (`dol_versions.py:17,41,58`). So there is neither a target address
+  nor a HUD text.
+- `remote_execution_patch_start` and `_load_player_state` raise a `ValueError` for `Game.CORRUPTION`
   (`OPR/all_prime_dol_patches.py:82,177`).
-- `CorruptionRemoteConnector.execute_remote_patches` wirft einen `RuntimeError` (`corruption_remote_connector.py:139-140`),
-  `receive_remote_pickups` gibt fest `False` zurück (`:131-137`), `_dol_patch_for_hud_message` wirft (`:128-129`),
-  `multiworld_magic_item` wirft `NotImplementedError` (`:51-54`).
-- Der MP3-Patcher (`MP3Randomizer`) baut keinen Hook ein. Live ist das Byte `cstate_manager_global + 0x2` auf PAL
-  dauerhaft `0xFF`, also kein Flag, das ein Hook zurücksetzt. Deshalb hielte `current_game_status` **immer**
-  `has_pending_op = True` (`corruption_remote_connector.py:87-88`), und `update()` würde den Multiworld-Teil nie
-  erreichen (`prime_remote_connector.py:336-340`).
-- Die Layout-UUID wird nicht in den Build-String geschrieben (live: Originaltext). Der Connector setzt deshalb
+- `CorruptionRemoteConnector.execute_remote_patches` raises a `RuntimeError` (`corruption_remote_connector.py:139-140`),
+  `receive_remote_pickups` returns a fixed `False` (`:131-137`), `_dol_patch_for_hud_message` raises (`:128-129`),
+  `multiworld_magic_item` raises `NotImplementedError` (`:51-54`).
+- The MP3 patcher (`MP3Randomizer`) builds in no hook. Live, the byte `cstate_manager_global + 0x2` on PAL is
+  permanently `0xFF`, so it is not a flag that a hook resets. Therefore `current_game_status` would **always** hold
+  `has_pending_op = True` (`corruption_remote_connector.py:87-88`), and `update()` would never reach the multiworld part
+  (`prime_remote_connector.py:336-340`).
+- The layout UUID is not written into the build string (live: original text). The connector therefore sets
   `INVALID_UUID` (`prime_remote_connector.py:97-99`).
 
-**Folge für T07 (Lücke):** Der AP-Client braucht einen eigenen Weg, Items zu geben. Möglichkeiten:
-- (a) **Direkt schreiben:** `amount`/`capacity` im Slot `PS + 0x54 + id*0xC` setzen. Das ist einfach, aber Nebenwirkungen
-  sind ungeprüft, etwa bei HUD, Waffen-Freischaltung, Energy Tanks (Energie auffüllen?), `ItemPercentage` und Speichern.
-  Das muss in T07 live getestet werden.
-- (b) **Remote-Execution-Hook für MP3 nachbauen:** Patcher-Erweiterung plus MP3-Adressen für `update_hint_state` bzw. einen
-  anderen Per-Frame-Hook und für CStateManager→PlayerState. Ein sauberer, aber deutlich größerer Aufwand.
+**Consequence for T07 (gap):** The AP client needs its own way to give items. Options:
+- (a) **Write directly:** set `amount`/`capacity` in the slot `PS + 0x54 + id*0xC`. That is simple, but side effects
+  are unchecked, e.g. for HUD, weapon unlocking, Energy Tanks (refill energy?), `ItemPercentage` and saving.
+  This has to be tested live in T07.
+- (b) **Rebuild the remote execution hook for MP3:** patcher extension plus MP3 addresses for `update_hint_state` or another
+  per-frame hook and for CStateManager→PlayerState. A clean, but much larger effort.
 
 ---
 
-## 5. Location-Check-Erkennung
+## 5. Location check detection
 
-### Wie Randovania es heute macht
+### How Randovania does it today
 
-**Gar nicht, für MP3 gibt es keinen Weg.** Der generische Ablauf in `PrimeRemoteConnector.known_collected_locations`
-(`prime_remote_connector.py:168-199`) liest das Magic Item. Dessen `amount - 1` ist der `PickupIndex` des zuletzt
-eingesammelten Fremd-Pickups. Danach setzt er es per Remote-Patch auf 0 zurück und meldet `PickupIndexCollected`
-(`:360-366`). Für MP3:
-- `multiworld_magic_item` wirft `NotImplementedError` (`corruption_remote_connector.py:51-54`).
-- Der Patcher legt keine Magic-Item-Pickups an, und Remote-Patches gehen nicht (Abschnitt 4).
-- Der Connector meldet nur **Region** (`PlayerLocationChanged`) und **Inventar** (`InventoryUpdated`)
-  (`prime_remote_connector.py:328-335, 354-358`). Selbst dafür müsste `update()` funktionieren. Weil
-  `multiworld_magic_item` geworfen wird und `has_pending_op` (siehe oben) immer wahr ist, landet man nie bei
+**Not at all; there is no way for MP3.** The generic flow in `PrimeRemoteConnector.known_collected_locations`
+(`prime_remote_connector.py:168-199`) reads the magic item. Its `amount - 1` is the `PickupIndex` of the last
+collected foreign pickup. It then resets it to 0 via a remote patch and reports `PickupIndexCollected`
+(`:360-366`). For MP3:
+- `multiworld_magic_item` raises `NotImplementedError` (`corruption_remote_connector.py:51-54`).
+- The patcher creates no magic item pickups, and remote patches do not work (section 4).
+- The connector only reports the **region** (`PlayerLocationChanged`) and the **inventory** (`InventoryUpdated`)
+  (`prime_remote_connector.py:328-335, 354-358`). Even for that `update()` would have to work. Because
+  `multiworld_magic_item` raises and `has_pending_op` (see above) is always true, one never gets to
   `_multiworld_interaction`.
 
-**Benannte Lücke:** Es gibt keine Adresse und kein Flag, das einen einzelnen Pickup-Ort identifiziert. Der Raum (Area)
-wird vom Connector nicht gelesen, nur die Welt.
+**Named gap:** There is no address and no flag that identifies a single pickup location. The room (area)
+is not read by the connector, only the world.
 
-### Was live messbar ist (PAL)
+### What can be measured live (PAL)
 
-Jeder eingesammelte Pickup erhöht `ItemPercentage` (ID 21) um 1, bei `amount` **und** `capacity`
-(0/100 → 1/101 → 2/102). Das passt dazu, dass in `pickup-database.json` jeder Pickup `"ItemPercentage": 1` mitgibt
-(z. B. Zeile 137). Dieser Zähler ist der einzige Wert, der sich bei **jedem** Pickup ändert. Auch eine
-„Locked Missile Expansion“ (ohne Missile Launcher) ändert nur ihn und `Missile` bleibt 0/0, weil die Ladung in die reine
-Logik-Ressource `TemporaryMissile` (ID 1002, nicht im Speicher) wandert (`pickup-database.json:737-754`).
+Every collected pickup increases `ItemPercentage` (ID 21) by 1, in `amount` **and** `capacity`
+(0/100 → 1/101 → 2/102). This fits with every pickup in `pickup-database.json` also giving `"ItemPercentage": 1`
+(e.g. line 137). This counter is the only value that changes with **every** pickup. Even a
+"Locked Missile Expansion" (without Missile Launcher) changes only it, and `Missile` stays 0/0 because the ammo goes into the pure
+logic resource `TemporaryMissile` (ID 1002, not in memory) (`pickup-database.json:737-754`).
 
-### Vorschlag für den AP-Client (T05/T06)
+### Proposal for the AP client (T05/T06)
 
-1. **Kurzfristig (Heuristik, ohne Patcher-Änderung):** Alle 0,5 s pollen. Ändert sich `ItemPercentage.amount`, wird das
-   Inventar vorher/nachher verglichen und mit der aktuellen Welt plus der Platzierung aus dem Seed die passende Location
-   gesucht. Das ist mehrdeutig, wenn in einer Welt mehrere Orte dasselbe Item tragen (z. B. Missile Expansions, AP-Fremd-Items)
-   oder ein Pickup nur `ItemPercentage` ändert. Für das MVP reicht es nicht, als Plausibilitätsprüfung ist es aber brauchbar.
-2. **Empfohlen:** Jeder Pickup gibt zusätzlich ein **eindeutiges Zähler-Item**, zum Beispiel einen ungenutzten Slot
-   (43, 47, 53–61) mit `amount = Location-Index + 1` wie beim MP1/MP2-Magic-Item. Alternativ ein eigenes Item je Location-Gruppe.
-   Der Client liest den Slot, meldet den Check und setzt ihn per direktem Schreiben auf 0 zurück. Das braucht eine
-   Patcher-Erweiterung in T05 und einen Live-Test, ob ungenutzte Slots stabil bleiben und mitgespeichert werden.
-3. **Nicht untersucht:** Layer- oder Memory-Relay-Zustände je Raum (CWorldLayerState), über die das Spiel sich merkt, welche
-   Pickups weg sind. Das wäre die patcherfreie Lösung, Adressen dafür gibt es in Randovania aber keine.
+1. **Short term (heuristic, without patcher change):** poll every 0.5 s. If `ItemPercentage.amount` changes, the
+   inventory is compared before/after and the matching location is searched with the current world plus the placement from the seed.
+   This is ambiguous if several locations in a world carry the same item (e.g. Missile Expansions, AP foreign items)
+   or a pickup changes only `ItemPercentage`. It is not enough for the MVP, but usable as a plausibility check.
+2. **Recommended:** every pickup additionally gives a **unique counter item**, for example an unused slot
+   (43, 47, 53–61) with `amount = location index + 1` as with the MP1/MP2 magic item. Alternatively one item of its own per location group.
+   The client reads the slot, reports the check and resets it to 0 by direct writing. This needs a
+   patcher extension in T05 and a live test whether unused slots stay stable and are saved too.
+3. **Not investigated:** layer or Memory Relay states per room (CWorldLayerState), through which the game remembers which
+   pickups are gone. That would be the patcher-free solution, but Randovania has no addresses for it.
 
 ---
 
-## 6. Ingame vs. Menü / Ladebildschirm
+## 6. Ingame vs. menu / loading screen
 
-Verfahren des Connectors (`corruption_remote_connector.py:56-89`, `prime_remote_connector.py:116-136`):
-**ingame** ⇔ der CPlayer-Zeiger ist gültig **und** seine vtable ist `cplayer_vtable` **und** die MLVL-ID gehört zu einer
-Region in der Datenbank. Sonst wird `None` gemeldet, also nicht ingame.
+Connector procedure (`corruption_remote_connector.py:56-89`, `prime_remote_connector.py:116-136`):
+**ingame** ⇔ the CPlayer pointer is valid **and** its vtable is `cplayer_vtable` **and** the MLVL ID belongs to a
+region in the database. Otherwise `None` is reported, i.e. not ingame.
 
-PAL-Messungen (Watcher-Log, 0,5-s-Polling):
+PAL measurements (watcher log, 0.5 s polling):
 
-| Zustand | MLVL `[gsp]+8` | CPlayer-Zeiger | vtable ok | Inventar |
+| State | MLVL `[gsp]+8` | CPlayer pointer | vtable ok | Inventory |
 |---|---|---|---|---|
-| Titel / Game Select / Menü | `0xF4A9F72C65FBAE26` (FrontEnd, keine Region) | `0x0` | nein | alle 0/0 |
-| Intro-Text „Life-Support Status“ / Landeanflug | `0xC133F919C108BDF9` (Valhalla) | gültig, vtable ok | ja | **noch 0/0** |
-| ingame Valhalla (Start, ~19 s nach Weltwechsel) | `0xC133F919C108BDF9` | `0x80B81960` | ja | Startitems 1/1 |
-| Flug Valhalla → Norion (Ladephase) | wechselt auf `0x6FB8EF2A9523C343` | **kurz `0x0`** (2 s) | nein | bleibt |
-| ingame Norion | `0x6FB8EF2A9523C343` | `0x80F5AA60` | ja | bleibt |
+| Title / Game Select / menu | `0xF4A9F72C65FBAE26` (FrontEnd, no region) | `0x0` | no | all 0/0 |
+| Intro text "Life-Support Status" / landing approach | `0xC133F919C108BDF9` (Valhalla) | valid, vtable ok | yes | **still 0/0** |
+| ingame Valhalla (start, ~19 s after world change) | `0xC133F919C108BDF9` | `0x80B81960` | yes | starting items 1/1 |
+| Flight Valhalla → Norion (loading phase) | changes to `0x6FB8EF2A9523C343` | **briefly `0x0`** (2 s) | no | stays |
+| ingame Norion | `0x6FB8EF2A9523C343` | `0x80F5AA60` | yes | stays |
 
-Folgerungen:
-- Die Prüfung „CPlayer + vtable“ trennt Menü und Laden zuverlässig vom Spiel.
-- In Intro und Cutscenes gilt man laut Connector schon als „ingame“, obwohl das Inventar noch nicht befüllt ist. Ein
-  AP-Client sollte erst schreiben, wenn auch `PowerBeam.capacity > 0` ist, oder auf eine andere Plausibilitätsprüfung warten.
-  Für Cutscenes gibt es in MP3 keinen Check: Der MP1/MP2-Kameracheck in `OPR/all_prime_dol_patches.py:70-82` fehlt für Corruption.
-- Das Byte `cstate_manager_global + 0x2` taugt in MP3 **nicht** als Zustandsflag (immer `0xFF`).
+Conclusions:
+- The check "CPlayer + vtable" reliably separates menu and loading from the game.
+- In the intro and cutscenes one already counts as "ingame" according to the connector, although the inventory is not filled yet. An
+  AP client should only write once `PowerBeam.capacity > 0` as well, or wait for another plausibility check.
+  There is no check for cutscenes in MP3: the MP1/MP2 camera check in `OPR/all_prime_dol_patches.py:70-82` is missing for Corruption.
+- The byte `cstate_manager_global + 0x2` is **not** suitable as a state flag in MP3 (always `0xFF`).
 
 ---
 
-## 7. Aktuelle Welt / Raum
+## 7. Current world / room
 
-- **Welt:** `[game_state_pointer] + 0x8` als `u64`. Abgleich gegen `region.extra["asset_id"]` aus
-  `logic_database/<Region>.json:4` (`prime_remote_connector.py:110-114`). Die Zuordnung Name → ID steht auch in
+- **World:** `[game_state_pointer] + 0x8` as `u64`. Compared against `region.extra["asset_id"]` from
+  `logic_database/<Region>.json:4` (`prime_remote_connector.py:110-114`). The mapping name → ID is also in
   `randovania/games/prime3/assets/migration_data.json:2-18`.
-- **Raum (Area):** wird vom Connector **nicht** gelesen (`PlayerLocationEvent(region, None)`,
-  `prime_remote_connector.py:331`). Adresse unbekannt. Die Area-Asset-IDs stehen in der Datenbank
+- **Room (area):** is **not** read by the connector (`PlayerLocationEvent(region, None)`,
+  `prime_remote_connector.py:331`). Address unknown. The area asset IDs are in the database
   (`migration_data.json` → `area_name_to_id`, `<Region>.json` → `extra.asset_id`).
 
-| Region | MLVL-Asset-ID (hex) | Status PAL |
+| Region | MLVL asset ID (hex) | Status PAL |
 |---|---|---|
-| G.F.S. Valhalla | `0xC133F919C108BDF9` | live bestätigt (Startwelt Seed IVG2J7OR) |
-| Norion | `0x6FB8EF2A9523C343` | live bestätigt |
-| FrontEnd (Menü) | `0xF4A9F72C65FBAE26` | live gesehen, keine Region in der DB |
-| G.F.S. Olympus | `0x37A9E86F0A0CAF6F` | nur aus DB |
-| übrige 12 Regionen | s. `migration_data.json:2-18` | nur aus DB |
+| G.F.S. Valhalla | `0xC133F919C108BDF9` | confirmed live (starting world seed IVG2J7OR) |
+| Norion | `0x6FB8EF2A9523C343` | confirmed live |
+| FrontEnd (menu) | `0xF4A9F72C65FBAE26` | seen live, no region in the DB |
+| G.F.S. Olympus | `0x37A9E86F0A0CAF6F` | DB only |
+| other 12 regions | see `migration_data.json:2-18` | DB only |
 
-Hinweis zu T01: Der Starter-Preset-Seed `IVG2J7OR` startet laut `t01.rdvgame` auf **Valhalla, Docking Bay 5**, nicht auf
-Olympus. Die Speicherwerte bestätigen das. Die T01-Beobachtung „bootet bis Olympus“ sollte man prüfen, wahrscheinlich
-war es Valhalla.
+Note on T01: according to `t01.rdvgame` the starter preset seed `IVG2J7OR` starts on **Valhalla, Docking Bay 5**, not on
+Olympus. The memory values confirm this. The T01 observation "boots up to Olympus" should be checked; it was probably
+Valhalla.
 
 ---
 
-## 8. Live-Prüfung PAL: Protokoll
+## 8. Live check PAL: log
 
-Werkzeug: Wegwerf-Skripte außerhalb des Repos (Scratchpad), `mp3mem.py` (Einzel-Lesung) und `mp3watch.py` (0,5-s-Polling,
-protokolliert nur Änderungen). Sie bilden die Pointer-Ketten aus Abschnitt 2 nach. Das Einsammeln hat der Nutzer
-gespielt, die Werte hat das Skript gelesen.
+Tools: throwaway scripts outside the repo (scratchpad), `mp3mem.py` (single read) and `mp3watch.py` (0.5 s polling,
+logs only changes). They reproduce the pointer chains from section 2. The user played the collecting,
+the script read the values.
 
-Bestätigte Werte (PAL `RM3P01`):
+Confirmed values (PAL `RM3P01`):
 
-| # | Feld | Erwartet (Code) | Gelesen | Ergebnis |
+| # | Field | Expected (code) | Read | Result |
 |---|---|---|---|---|
-| 1 | Game-ID `0x80000000` | `RM3P01` | `RM3P01` | ✔ |
-| 2 | Build-String @ `0x805843A8` | `…2007/08/24 16:52 Build v3.453 (mp3)` | identisch | ✔ |
-| 3 | CPlayer-vtable | `0x80595238` | `0x80595238` | ✔ |
-| 4 | Welt `[0x80680234]+8` | Valhalla `0xC133F919C108BDF9`, nach Flug Norion `0x6FB8EF2A9523C343` | identisch | ✔ |
-| 5 | Inventar Startitems | Seed: Charge, Power, Combat, Scan, Space Jump, Morph Ball, Bombs | genau diese 7 auf 1/1, Rest 0 | ✔ |
-| 6 | **ScrewAttack** (ID 16) @ `0x80995C34` | – | **vorher 0/0 → nachher 1/1** (19:25:43, Norion, Docking Hub Alpha, Ort „Pickup (Grapple Lasso)“, laut Seed Screw Attack) | ✔ |
-| 7 | **ItemPercentage** (ID 21) @ `0x80995C70` | +1 je Pickup | 0/100 → **1/101** (19:22:41, Valhalla; vermutlich die Missile Expansion in Docking Bay 5, `Missile` blieb 0/0) → **2/102** (Screw Attack) | ✔ |
-| 8 | Stat_DamageReceived (ID 64) | – | 0/0 → 2/2, als das HUD von 99 auf 97 fiel | ✔ |
-| 9 | Stat_ShotsFired (ID 63) | – | zählt jeden Schuss hoch (0 → 12) | ✔ |
+| 1 | Game ID `0x80000000` | `RM3P01` | `RM3P01` | ✔ |
+| 2 | Build string @ `0x805843A8` | `…2007/08/24 16:52 Build v3.453 (mp3)` | identical | ✔ |
+| 3 | CPlayer vtable | `0x80595238` | `0x80595238` | ✔ |
+| 4 | World `[0x80680234]+8` | Valhalla `0xC133F919C108BDF9`, after the flight Norion `0x6FB8EF2A9523C343` | identical | ✔ |
+| 5 | Inventory starting items | seed: Charge, Power, Combat, Scan, Space Jump, Morph Ball, Bombs | exactly these 7 at 1/1, rest 0 | ✔ |
+| 6 | **ScrewAttack** (ID 16) @ `0x80995C34` | – | **before 0/0 → after 1/1** (19:25:43, Norion, Docking Hub Alpha, location "Pickup (Grapple Lasso)", Screw Attack according to the seed) | ✔ |
+| 7 | **ItemPercentage** (ID 21) @ `0x80995C70` | +1 per pickup | 0/100 → **1/101** (19:22:41, Valhalla; probably the Missile Expansion in Docking Bay 5, `Missile` stayed 0/0) → **2/102** (Screw Attack) | ✔ |
+| 8 | Stat_DamageReceived (ID 64) | – | 0/0 → 2/2 when the HUD dropped from 99 to 97 | ✔ |
+| 9 | Stat_ShotsFired (ID 63) | – | counts up every shot (0 → 12) | ✔ |
 
-Nicht live geprüft: `powerup_functions` (Item geben), Schreibzugriffe aller Art, NTSC-U und NTSC-J.
+Not checked live: `powerup_functions` (giving items), writes of any kind, NTSC-U and NTSC-J.
 
 ---
 
-## 9. Offene Punkte für T05–T07
+## 9. Open points for T05–T07
 
-1. Item-Vergabe (T07): direktes Schreiben in den Inventar-Slot live testen, inklusive Speichern, Laden, Energy Tank und Beam-Wechsel.
-2. Location-Checks (T05/T06): Zähler-Item im Patcher oder Layer-State-Adressen finden (Abschnitt 5).
-3. Raum-Adresse (Area) für Tracker oder DeathLink, optional.
-4. NTSC-U-Adressen (`RM3E01`) live prüfen, sobald ein ISO da ist (E7).
-5. Layout-UUID: Der MP3-Patcher schreibt sie nicht. Für die Zuordnung Client ↔ Seed braucht es einen eigenen Marker
-   (z. B. Seed-Hash im Build-String, wie bei `apply_build_info_patch`, `OPR/all_prime_dol_patches.py:316`).
+1. Item giving (T07): test direct writing into the inventory slot live, including saving, loading, Energy Tank and beam switching.
+2. Location checks (T05/T06): counter item in the patcher, or find layer state addresses (section 5).
+3. Room address (area) for tracker or DeathLink, optional.
+4. Check NTSC-U addresses (`RM3E01`) live as soon as an ISO is available (E7).
+5. Layout UUID: the MP3 patcher does not write it. Mapping client ↔ seed needs a marker of its own
+   (e.g. seed hash in the build string, as with `apply_build_info_patch`, `OPR/all_prime_dol_patches.py:316`).

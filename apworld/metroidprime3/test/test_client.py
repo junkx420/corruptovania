@@ -137,7 +137,7 @@ class TestFlagBlockFinder(unittest.TestCase):
         self.assertIsNotNone(finder.read_flags(NORION))
         self.assertEqual(finder.scan_count, 2)
 
-    @unittest.skipUnless(os.environ.get("MP3_MEM1_SNAPSHOT"), "MP3_MEM1_SNAPSHOT (T10-Snapshot D2_mem1.bin) fehlt")
+    @unittest.skipUnless(os.environ.get("MP3_MEM1_SNAPSHOT"), "MP3_MEM1_SNAPSHOT (T10 snapshot D2_mem1.bin) missing")
     def test_real_snapshot(self) -> None:
         """Cross-check on the real memory dump from T10 (snapshot D2: Norion, locations 3 and 4 collected)."""
         memory = connected_memory()

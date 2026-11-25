@@ -102,7 +102,7 @@ class SlotLimit:
         return min(self.tab_max, (1 << self.bits) - 1)
 
 
-# docs/AP_SLOT_LIMITS.md section 4 (columns name, tab_max, bits_kapazitaet = bits_anzahl)
+# docs/AP_SLOT_LIMITS.md section 4 (columns name, tab_max, bits_capacity = bits_amount)
 SLOT_LIMITS: dict[int, SlotLimit] = {
     0: SlotLimit("PowerBeam", 1, 1),
     1: SlotLimit("PlasmaBeam", 1, 1),

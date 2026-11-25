@@ -1,93 +1,93 @@
-# SPEC – Metroid Prime 3 Archipelago (Entwurf)
+# SPEC – Metroid Prime 3 Archipelago (draft)
 
-Stand: 2026-11-25 · Status: **E1–E20 entschieden**
+As of 2026-11-25 · Status: **E1–E20 decided**
 
-## 1. Ziel
+## 1. Goal
 
-Metroid Prime 3: Corruption als spielbares Archipelago-Spiel (Multiworld): Items von MP3 landen in fremden Welten, fremde Items in MP3, Fortschritt wird live über einen AP-Server synchronisiert.
+Metroid Prime 3: Corruption as a playable Archipelago game (multiworld): items of MP3 end up in other worlds, items of other worlds in MP3, progress is synchronised live via an AP server.
 
-Nicht-Ziel (vorerst): Weiterentwicklung von Corruptovania als eigenständiger Randovania-Fork, macOS-Builds, Discord-Bot/Server-Teile von Randovania.
+Non-goal (for now): further development of Corruptovania as a standalone Randovania fork, macOS builds, Discord bot/server parts of Randovania.
 
-## 2. Ausgangsbasis (oberflächliche Sichtung)
+## 2. Starting point (superficial survey)
 
-| Bereich | Ort | Nutzen für AP |
+| Area | Place | Use for AP |
 |---|---|---|
-| Logik-Datenbank (Regionen, Räume, Requirements, Tricks) | `randovania/games/prime3/logic_database/*.json` | Quelle für Regionen/Locations/Regeln |
-| Pickup-Datenbank, Item-Pool | `randovania/games/prime3/pickup_database`, `generator/` | Quelle für Item-Liste |
-| Export/Patch-Daten | `randovania/games/prime3/exporter/` (`patch_data_factory.py`, `game_exporter.py`, `toolchain.py`) | Erzeugt Patch-JSON für den Patcher |
-| ISO-Patcher (C#/.NET 8) | `tools/prime3_patcher/MP3Randomizer` | Schreibt Items ins Spiel; braucht AP-Platzhalter-Items |
-| Dolphin-Speicheranbindung | `randovania/game_connection/connector/corruption_remote_connector.py` (152 Zeilen), `executor/dolphin_executor.py` | Basis für den AP-Client (Location-Checks lesen, Items geben) |
-| Lizenz | GPLv3 (`LICENSE`) | Abgeleitete Teile müssen GPLv3 bleiben |
+| Logic database (regions, rooms, requirements, tricks) | `randovania/games/prime3/logic_database/*.json` | source for regions/locations/rules |
+| Pickup database, item pool | `randovania/games/prime3/pickup_database`, `generator/` | source for the item list |
+| Export/patch data | `randovania/games/prime3/exporter/` (`patch_data_factory.py`, `game_exporter.py`, `toolchain.py`) | creates the patch JSON for the patcher |
+| ISO patcher (C#/.NET 8) | `tools/prime3_patcher/MP3Randomizer` | writes items into the game; needs AP placeholder items |
+| Dolphin memory connection | `randovania/game_connection/connector/corruption_remote_connector.py` (152 lines), `executor/dolphin_executor.py` | basis for the AP client (read location checks, give items) |
+| Licence | GPLv3 (`LICENSE`) | derived parts must stay GPLv3 |
 
-Befunde T01 (Details `docs/AP_DEV_SETUP.md`): Patcher muss als **win-x86** gebaut werden (`lzokay.dll` ist 32-bit). Kein Code prüft Game-ID/Hash. MP3Update-/Deflicker-hdiffs funktionieren nur auf NTSC-U. Exporter nutzt noch die eingecheckte EXE.
+Findings T01 (details `docs/AP_DEV_SETUP.md`): the patcher must be built as **win-x86** (`lzokay.dll` is 32-bit). No code checks game ID/hash. MP3Update/Deflicker hdiffs only work on NTSC-U. The exporter still uses the checked-in EXE.
 
-Hinweise: Python ≥ 3.12. Im Repo gibt es keinerlei Archipelago-Code. Letzter Commit 2026-08-16. Upstream-Remote `origin` = Schwork-Corruption/corruptovania (kein eigener Fork eingerichtet).
+Notes: Python ≥ 3.12. There is no Archipelago code at all in the repo. Last commit 2026-08-16. Upstream remote `origin` = Schwork-Corruption/corruptovania (no fork of our own set up).
 
-## 3. Architektur (festgelegt durch E1)
+## 3. Architecture (fixed by E1)
 
 ```
-Archipelago (Generator)                         Spieler-PC
+Archipelago (generator)                         Player PC
 ┌────────────────────────────┐                 ┌───────────────────────────────┐
-│ apworld "metroidprime3"    │  .apmp3 Patch   │ Patch-Tool                    │
-│ - items.py / locations.py  │ ──────────────▶ │  Patch-JSON → MP3Randomizer   │
-│ - regions/rules (generiert │                 │  → gepatchtes ISO             │
-│   aus Corruptovania-DB)    │                 │                               │
-│ - options.py               │                 │ AP-Client (MP3Client)         │
-└────────────────────────────┘                 │  Dolphin-Memory ⇄ AP-Server   │
-              ▲                                │  (Checks senden, Items geben) │
-              │ Konverter-Skript (einmalig/CI) └───────────────────────────────┘
+│ apworld "metroidprime3"    │  .apmp3 patch   │ Patch tool                    │
+│ - items.py / locations.py  │ ──────────────▶ │  patch JSON → MP3Randomizer   │
+│ - regions/rules (generated │                 │  → patched ISO                │
+│   from Corruptovania DB)   │                 │                               │
+│ - options.py               │                 │ AP client (MP3Client)         │
+└────────────────────────────┘                 │  Dolphin memory ⇄ AP server   │
+              ▲                                │  (send checks, give items)    │
+              │ converter script (once/CI)     └───────────────────────────────┘
    Corruptovania logic_database/*.json
 ```
 
-Bausteine:
-1. **DB-Konverter**: liest Corruptovania-JSON, erzeugt AP-Regionen, Locations, Regeln (Requirement-Bäume → AP-Rule-Lambdas). Trick-Level als AP-Option.
-2. **APWorld**: Items, Locations, Optionen, Ziel (Dark Samus/Phaaze), Füllitems, `fill_slot_data`.
-3. **Patch-Pfad**: AP-Ergebnis → Corruptovania-Patch-JSON → `MP3Randomizer`. Fremde Items als neutrales „AP-Item“ (Modell + Text) im Spiel.
-4. **Client**: Flag-Block der Welt lesen (Location-Checks, E8), Items per Soll/Ist-Abgleich ins Inventar schreiben (E9, E11), Seed-Kennung prüfen (T18), optional DeathLink.
+Building blocks:
+1. **DB converter**: reads Corruptovania JSON, creates AP regions, locations, rules (requirement trees → AP rule lambdas). Trick level as an AP option.
+2. **APWorld**: items, locations, options, goal (Dark Samus/Phaaze), filler items, `fill_slot_data`.
+3. **Patch path**: AP result → Corruptovania patch JSON → `MP3Randomizer`. Items of other worlds as a neutral "AP item" (model + text) in the game.
+4. **Client**: read the world's flag block (location checks, E8), write items into the inventory via target/current reconciliation (E9, E11), check the seed ID (T18), optionally DeathLink.
 
-## 3a. Arbeitsregeln für Worker
+## 3a. Working rules for workers
 
-- Gearbeitet wird auf Branch `archipelago`, Remote `origin` = `junkx420/corruptovania`. `upstream` = Original-Repo; nie dorthin pushen.
-- Jeder Worker committet nur die Dateien, die ihm freigegeben sind, und pusht am Ende. Vorher `git pull --rebase origin archipelago` ausführen. Konflikte in STATUS.md lösen, ohne fremde Zeilen zu ändern.
-- Nie ins Repo: ISOs, Spieldateien, Dolphin, persönliche Pfade, Builds (`build/`, `venv/`).
-- Die APWorld darf zur Laufzeit nicht von Randovania abhängen. Der Konverter erzeugt eigenständige Python-Daten.
+- Work happens on branch `archipelago`, remote `origin` = `junkx420/corruptovania`. `upstream` = original repo; never push there.
+- Every worker commits only the files released to them and pushes at the end. Run `git pull --rebase origin archipelago` first. Resolve conflicts in STATUS.md without changing other workers' rows.
+- Never into the repo: ISOs, game files, Dolphin, personal paths, builds (`build/`, `venv/`).
+- The APWorld must not depend on Randovania at runtime. The converter creates self-contained Python data.
 
-## 4. Features in Reihenfolge
+## 4. Features in order
 
-| # | Feature | Abhängig von |
+| # | Feature | Depends on |
 |---|---|---|
-| F1 | Eigener Fork + lauffähige Dev-Umgebung (Corruptovania generiert + exportiert ein Seed lokal) | – |
-| F2 | Speicher-Mapping dokumentieren: Inventar-Adressen, Pickup-/Location-Flags, Spielzustand (Ingame/Menü) | F1 |
-| F3 | DB-Konverter Corruptovania → AP-Datenstrukturen | F1 |
-| F4 | APWorld-Grundgerüst: Items, Locations, Regeln, Ziel; generiert solo-Seed ohne Fehler | F3 |
-| F5 | Patch-Pfad: AP-Platzierung → gepatchtes ISO, fremde Items als AP-Platzhalter | F4 |
-| F6 | AP-Client: Location-Checks senden | F2 |
-| F7 | AP-Client: empfangene Items ins Spiel geben, Wiederaufnahme nach Neustart | F6 |
-| F8 | Ende-zu-Ende-Test: 2-Spieler-Multiworld (MP3 + beliebiges Spiel) durchgespielt bis Ziel | F5, F7 |
-| F9 | Optionen-Ausbau: Startort, Starting Items, Trick-Level, Energy-Cell-Ziel (nicht im MVP, siehe E3) | F8 |
-| F10 | DeathLink, Hinweise im Spiel, Release-Paket + eigene Release-Repo (E20) | F8 |
+| F1 | Own fork + working dev environment (Corruptovania generates + exports a seed locally) | – |
+| F2 | Document the memory mapping: inventory addresses, pickup/location flags, game state (ingame/menu) | F1 |
+| F3 | DB converter Corruptovania → AP data structures | F1 |
+| F4 | APWorld skeleton: items, locations, rules, goal; generates a solo seed without errors | F3 |
+| F5 | Patch path: AP placement → patched ISO, items of other worlds as AP placeholders | F4 |
+| F6 | AP client: send location checks | F2 |
+| F7 | AP client: give received items into the game, resumption after restart | F6 |
+| F8 | End-to-end test: 2-player multiworld (MP3 + any game) played through to the goal | F5, F7 |
+| F9 | Extending options: starting location, starting items, trick level, Energy Cell goal (not in the MVP, see E3) | F8 |
+| F10 | DeathLink, hints in the game, release package + release repo of its own (E20) | F8 |
 
-## 5. Offene Entscheidungen
+## 5. Open decisions
 
-| ID | Frage | Vorschlag | Status |
+| ID | Question | Proposal | Status |
 |---|---|---|---|
-| E1 | Architektur | **Eigenständige APWorld**, Logik aus Corruptovania-DB konvertiert, Corruptovania nur als Patcher | entschieden 2026-11-23 |
-| E2 | Zielplattform/Spielversion | **Nur Dolphin**, nur die Version, die der Patcher heute unterstützt. T01: implizit NTSC-U RM3E01. PAL RM3P01 funktioniert ohne MP3Update/Deflicker. Trilogy geht nicht. **PrimeHack** (Dolphin-Fork mit Maus-Steuerung) gilt als unterstützter Emulator, wird ab T10 zum Testen genutzt | entschieden 2026-11-23 |
-| E3 | MVP-Umfang | **Nur Item-Shuffle, Standard-Startort, festes Ziel Dark Samus.** Startort, Trick-Level, DeathLink erst in F9/F10 | entschieden 2026-11-23 |
-| E4 | Repo-Hosting | **Fork `junkx420/corruptovania`, Arbeitsbranch `archipelago`** (Standardbranch). `main` bleibt Spiegel von Upstream. APWorld liegt im selben Repo unter `apworld/metroidprime3/`, Konverter unter `apworld/tools/` | entschieden 2026-11-23 |
-| E5 | Lizenz der APWorld | **GPLv3** (abgeleitete Logikdaten aus Corruptovania) | entschieden 2026-11-24 |
-| E7 | MVP-Region: PAL RM3P01 (vorhandenes ISO, ohne MP3Update) oder NTSC-U RM3E01 (Patcher-Zielversion, ISO fehlt)? | **PAL RM3P01 für den MVP.** NTSC-U nachziehen, sobald ein Dump vorliegt (Adressen anderer Regionen aus Code, nicht live geprüft) | entschieden 2026-11-23 |
-| E6 | Client-Basis | **AP-`CommonClient` + `dolphin-memory-engine`**, Adressen aus docs/AP_MEMORY_MAP.md; Client liegt in der APWorld (`apworld/metroidprime3/client/`) | entschieden 2026-11-24 |
-| E8 | Location-Checks | Flag-Block der Welt (1024 Byte im Heap): Signatur-Suche nach Laden/Weltwechsel, Adresse merken, Signatur bei jeder Abfrage prüfen. Kein DOL-Hook im MVP | angenommen 2026-11-23 (F-01) |
-| E9 | Item-Vergabe | Direktschreiben von Anzahl/Kapazität in `PS + 0x54 + slot*0xC`, nur wenn Spieler ingame (CPlayer-vtable) und `PowerBeam.capacity > 0` | angenommen 2026-11-23 (F-01) |
-| E10 | Remote-Items | Alle 99 Orte geben lokal nichts (`item_type FF FF FF FF`, 0/0). Auch eigene Items kommen vom Server, `items_handling = 0b111` | angenommen 2026-11-23 (F-01) |
-| E11 | Empfangene Items | Kein gespeicherter Index. Soll-Wert je Slot = Startitems aus `slot_data` + Wirkung aller empfangenen Items, **absolut gesetzt, nur angehoben, auf `max_capacity` der DOL-Tabelle begrenzt** (Spielstand speichert je Slot nur so viele Bits, wie das Maximum braucht; darüber wird abgeschnitten). Ausnahmen (T19): Suit fest auf den gültigen Wert aus `docs/AP_SLOT_LIMITS.md` (Suit-Anzahl 13 friert das Spiel ein); Energy Cells: Anzahl = empfangen − eingesetzt (Slots 52–61), eingesetzte Zellen nie neu geben. Tod/Continue setzt das Inventar auf den Spielstand zurück, der Abgleich gibt danach erneut | angenommen 2026-11-25 (T19/T15) |
-| E12 | Byte↔Ort-Tabelle | Statisch aus SAVW + MREA erzeugt, gilt für alle Seeds, eigenständige Python-Daten, live per Stichprobe geprüft (T12, T13) | angenommen 2026-11-23 (F-01) |
-| E13 | Anzahl Orte | 99 Orte (Pickup-Index 1–99), Ort 0 entfällt | angenommen 2026-11-23 (F-01) |
-| E14 | Pickup-Darstellung | Fremd-Pickups: vorhandenes neutrales Modell, ein gemeinsamer Text „Archipelago-Item“. Eigene Pickups zeigen das echte Item. Texte je Ort nach dem MVP | angenommen 2026-11-23 (F-01) |
-| E15 | Missile-required | Im AP-Patch aus, die Launcher-Sperre bildet der Client ab | angenommen 2026-11-23 (F-01) |
-| E16 | DOL-Hook | Nur falls T11 ein Item findet, das per Direktschreiben nicht wirkt | angenommen; T11: Bedingung nicht erfüllt, kein Hook im MVP |
-| E17 | Ort 0 / Pool-Größe | Ort 0 (nie gepatcht) ist laut DB erst nach „Aurora Unit 313“ erreichbar, sein Vanilla-Item Hypermode ist für die Logik nutzlos. **Hypermode kommt in den AP-Pool, dafür eine Missile Expansion raus; Pool bleibt 99.** Ort 0 ist in AP keine Location | revidiert 2026-11-24 (F-02) |
-| E18 | „before event X“ | Gilt in der Logik als erfüllt. Gefährlich ist jedes Event, das irgendwo negiert vorkommt (aus den Daten abgeleitet). Der Konverter berechnet je gefährlichem Event ein `escape_requirement` (Rückweg vom Event-Knoten zum Schiff im Zustand „nach X“, zyklenfrei: Events, die X voraussetzen, werden durch ihr eigenes Requirement ersetzt) und **hängt es an jede Verbindung in den Event-Knoten** (Betreten löst das Event aus). Die APWorld braucht dafür keine Sonderlogik. Zu frühes Auslösen behebt der Spieler durch Neuladen. Kein Patcher-Eingriff im MVP | angenommen 2026-11-24 (F-02 + Nachprüfung) |
-| E19 | Prüfung der Flag-Tabelle | 89 Orte sicher, 10 SpecialFunction-Orte „wahrscheinlich“ (T12). Statt alle 10 live anzulaufen: Der Client hat einen Lern-/Logmodus (steigt ItemPercentage, protokolliert er neu gesetzte Flag-Bytes) und meldet Abweichungen zur Tabelle; Prüfung erfolgt in Playtests. T13 prüft nur leicht erreichbare Orte | entschieden 2026-11-24 |
-| E20 | Release-Repo | Bis zum Playtest bleibt alles im Fork. Zum Beta-Release (F10) eigene Repo (z. B. `junkx420/metroidprime3-archipelago`) nur mit APWorld, Client, Patch-Tool, Anleitung, GPLv3; `.apworld` und EXE als GitHub-Release-Assets. Der Fork bleibt Quelle für Logik und Patcher | entschieden 2026-11-25 |
+| E1 | Architecture | **Standalone APWorld**, logic converted from the Corruptovania DB, Corruptovania only as patcher | decided 2026-11-23 |
+| E2 | Target platform/game version | **Dolphin only**, only the version the patcher supports today. T01: implicitly NTSC-U RM3E01. PAL RM3P01 works without MP3Update/Deflicker. Trilogy does not work. **PrimeHack** (Dolphin fork with mouse control) counts as a supported emulator, used for testing from T10 on | decided 2026-11-23 |
+| E3 | MVP scope | **Item shuffle only, default starting location, fixed goal Dark Samus.** Starting location, trick level, DeathLink only in F9/F10 | decided 2026-11-23 |
+| E4 | Repo hosting | **Fork `junkx420/corruptovania`, working branch `archipelago`** (default branch). `main` stays a mirror of upstream. The APWorld lives in the same repo under `apworld/metroidprime3/`, the converter under `apworld/tools/` | decided 2026-11-23 |
+| E5 | Licence of the APWorld | **GPLv3** (logic data derived from Corruptovania) | decided 2026-11-24 |
+| E7 | MVP region: PAL RM3P01 (available ISO, without MP3Update) or NTSC-U RM3E01 (patcher target version, ISO missing)? | **PAL RM3P01 for the MVP.** Add NTSC-U as soon as a dump is available (addresses of other regions from code, not checked live) | decided 2026-11-23 |
+| E6 | Client basis | **AP `CommonClient` + `dolphin-memory-engine`**, addresses from docs/AP_MEMORY_MAP.md; the client lives in the APWorld (`apworld/metroidprime3/client/`) | decided 2026-11-24 |
+| E8 | Location checks | Flag block of the world (1024 bytes in the heap): signature search after loading/world change, remember the address, check the signature on every query. No DOL hook in the MVP | accepted 2026-11-23 (F-01) |
+| E9 | Item giving | Direct writing of amount/capacity to `PS + 0x54 + slot*0xC`, only when the player is ingame (CPlayer vtable) and `PowerBeam.capacity > 0` | accepted 2026-11-23 (F-01) |
+| E10 | Remote items | All 99 locations give nothing locally (`item_type FF FF FF FF`, 0/0). Own items come from the server too, `items_handling = 0b111` | accepted 2026-11-23 (F-01) |
+| E11 | Received items | No stored index. Target value per slot = starting items from `slot_data` + effect of all received items, **set absolutely, only raised, limited to `max_capacity` of the DOL table** (the save stores only as many bits per slot as the maximum needs; anything above is cut off). Exceptions (T19): Suit fixed to the valid value from `docs/AP_SLOT_LIMITS.md` (Suit amount 13 freezes the game); Energy Cells: amount = received − inserted (slots 52–61), never give inserted cells again. Death/Continue resets the inventory to the save; the reconciliation gives again afterwards | accepted 2026-11-25 (T19/T15) |
+| E12 | Byte↔location table | Generated statically from SAVW + MREA, applies to all seeds, self-contained Python data, checked live by spot check (T12, T13) | accepted 2026-11-23 (F-01) |
+| E13 | Number of locations | 99 locations (pickup index 1–99), location 0 is dropped | accepted 2026-11-23 (F-01) |
+| E14 | Pickup display | Pickups of other worlds: existing neutral model, one shared text "Archipelago-Item". Own pickups show the real item. Texts per location after the MVP | accepted 2026-11-23 (F-01) |
+| E15 | Missile-required | Off in the AP patch, the client reproduces the launcher lock | accepted 2026-11-23 (F-01) |
+| E16 | DOL hook | Only if T11 finds an item that does not work via direct writing | accepted; T11: condition not met, no hook in the MVP |
+| E17 | Location 0 / pool size | Location 0 (never patched) is according to the DB only reachable after "Aurora Unit 313"; its vanilla item Hypermode is useless for the logic. **Hypermode goes into the AP pool, one Missile Expansion goes out instead; the pool stays 99.** Location 0 is not a location in AP | revised 2026-11-24 (F-02) |
+| E18 | "before event X" | Counts as satisfied in the logic. Dangerous is every event that occurs negated somewhere (derived from the data). The converter computes an `escape_requirement` per dangerous event (way back from the event node to the ship in the state "after X", cycle-free: events that require X are replaced by their own requirement) and **attaches it to every connection into the event node** (entering triggers the event). The APWorld needs no special logic for it. The player fixes triggering too early by reloading. No patcher change in the MVP | accepted 2026-11-24 (F-02 + re-check) |
+| E19 | Check of the flag table | 89 locations certain, 10 SpecialFunction locations "probable" (T12). Instead of visiting all 10 live: the client has a learning/log mode (when ItemPercentage rises, it logs newly set flag bytes) and reports differences from the table; checking happens in playtests. T13 checks only easily reachable locations | decided 2026-11-24 |
+| E20 | Release repo | Until the playtest everything stays in the fork. For the beta release (F10) a repo of its own (e.g. `junkx420/metroidprime3-archipelago`) with only APWorld, client, patch tool, guide, GPLv3; `.apworld` and EXE as GitHub release assets. The fork stays the source for logic and patcher | decided 2026-11-25 |

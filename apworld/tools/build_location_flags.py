@@ -1,23 +1,23 @@
-"""Erzeugt ``apworld/metroidprime3/location_flags.py``: Pickup-Index 1-99 →
-(MLVL-ID, Byte-Index im Welt-Flag-Block, volle Objekt-ID).
+"""Generates ``apworld/metroidprime3/location_flags.py``: pickup index 1-99 →
+(MLVL ID, byte index in the world flag block, full object ID).
 
-Nur lesend. Eingaben:
-- ein entpacktes PAL-ISO (Ordner mit ``DATA/files`` bzw. den ``*.pak``),
+Read-only. Inputs:
+- an extracted PAL ISO (folder with ``DATA/files`` or with the ``*.pak``),
 - ``tools/prime3_patcher/MP3Randomizer/MP3Randomizer/PickupLocations.cs``
-  (MREA-ID, Layer, untere 16 Bit der Instanz-ID je Ort).
+  (MREA ID, layer, lower 16 bits of the instance ID per location).
 
-Befund (Details ``docs/AP_SAVW_FORMAT.md``): Der 1024-Byte-Flag-Block der Welt
-ist der Zustand der **Memory Relays** (MRLY) aus Liste 1 der SAVW. Byte ``i``
-gehört zum Eintrag ``i`` dieser Liste (Leerplätze zählen mit). Ein Pickup setzt
-kein eigenes Byte, sondern aktiviert beim Einsammeln über ein Relay sein Memory
-Relay, das beim Laden den Pickup wieder abschaltet.
+Finding (details ``docs/AP_SAVW_FORMAT.md``): the 1024-byte flag block of the world
+is the state of the **Memory Relays** (MRLY) from list 1 of the SAVW. Byte ``i``
+belongs to entry ``i`` of this list (empty slots count too). A pickup does not set
+a byte of its own; when collected, it activates its Memory Relay via a relay, and
+that Memory Relay switches the pickup off again on load.
 
-Aufruf (aus dem Repo-Wurzelverzeichnis):
+Usage (from the repo root directory):
 
-    venv/Scripts/python.exe -I apworld/tools/build_location_flags.py <entpacktes-ISO>
+    venv/Scripts/python.exe -I apworld/tools/build_location_flags.py <extracted-ISO>
 
-Optionen: ``--locations`` (Pfad zu PickupLocations.cs), ``--output`` (Zieldatei),
-``--check`` (nur vergleichen, nichts schreiben; Exit 1 bei Abweichung).
+Options: ``--locations`` (path to PickupLocations.cs), ``--output`` (target file),
+``--check`` (compare only, write nothing; exit 1 on difference).
 """
 
 from __future__ import annotations
@@ -39,10 +39,10 @@ DEFAULT_LOCATIONS = os.path.join(
 )
 DEFAULT_OUTPUT = os.path.join(REPO, "apworld", "metroidprime3", "location_flags.py")
 
-MAX_DEPTH = 3  # Verbindungen vom Pickup bis zum Memory Relay (gemessen: immer 2)
+MAX_DEPTH = 3  # connections from the pickup to the Memory Relay (measured: always 2)
 
-# Weltnamen für die erzeugte Datei: Regionsnamen der Logik-Datenbank
-# (randovania/games/prime3/logic_database/*.json, Feld extra.asset_id = MLVL-ID).
+# World names for the generated file: region names of the logic database
+# (randovania/games/prime3/logic_database/*.json, field extra.asset_id = MLVL ID).
 WORLD_LABELS = {
     0x9BA9292D588D6EB8: "Bryyo - Fire",
     0xB0D67636D61F3868: "Bryyo - Ice",
@@ -67,7 +67,7 @@ class PickupLocation:
     index: int
     mrea_id: int
     layer: int
-    type: str  # "Pickup" oder "SpecialFunction"
+    type: str  # "Pickup" or "SpecialFunction"
     local_id: int
     percentage_local_id: int | None
 
@@ -91,31 +91,31 @@ def read_pickup_locations(path: str) -> list[PickupLocation]:
         pct = int(pct_hi) * 256 + int(pct_lo) if n_pct == "2" else None
         out.append(PickupLocation(int(idx), int(mrea), int(layer), typ, int(hi) * 256 + int(lo), pct))
     if sorted(p.index for p in out) != list(range(100)):
-        raise ValueError(f"{path}: erwartet Orte 0-99, gefunden {len(out)}")
+        raise ValueError(f"{path}: expected locations 0-99, found {len(out)}")
     return sorted(out, key=lambda p: p.index)
 
 
 # --------------------------------------------------------------------------- #
-# Graph-Auswertung eines Raums
+# Graph analysis of a room
 # --------------------------------------------------------------------------- #
 
 
-ID_MASK = 0x03FFFFFF  # Bereich (10 Bit) + lokale ID (16 Bit), ohne Layer (6 Bit)
+ID_MASK = 0x03FFFFFF  # area (10 bits) + local ID (16 bits), without layer (6 bits)
 
 
 class Room:
-    """Objekte und Verbindungen eines Raums.
+    """Objects and connections of a room.
 
-    Verbindungsziele werden über Bereich + lokale ID aufgelöst (untere 26 Bit):
-    Der Patcher schreibt Ziele ohne Layer-Bits zurück (``Connection.export``),
-    das Spiel findet sie trotzdem (Ort 4 auf Layer 16 live gemessen)."""
+    Connection targets are resolved via area + local ID (lower 26 bits):
+    the patcher writes targets back without layer bits (``Connection.export``),
+    the game finds them anyway (location 4 on layer 16 measured live)."""
 
     def __init__(self, mrea: sp.Mrea):
         self.objects: dict[int, sp.ScriptObject] = {}
         self.layer_of: dict[int, int] = {}
         by_key: dict[int, int] = {}
-        # Bereich + ID mehrfach (nur im gepatchten Spiel: neue Patcher-Objekte in
-        # mehreren Layern). Solche Ziele werden nur bei exakter voller ID aufgelöst.
+        # Area + ID more than once (only in the patched game: new patcher objects in
+        # several layers). Such targets are only resolved by exact full ID.
         self.ambiguous: set[int] = set()
         for layer, o in mrea.objects():
             key = o.instance_id & ID_MASK
@@ -149,13 +149,12 @@ class Room:
             if self.layer_of[iid] == layer and o.local_id == local_id and o.type == type_
         ]
         if len(hits) > 1:
-            raise ValueError(f"{type_} {local_id:#x} in Layer {layer} mehrfach")
+            raise ValueError(f"{type_} {local_id:#x} more than once in layer {layer}")
         return hits[0] if hits else None
 
     def activated_relays(self, start: int, relays: dict[int, int], max_depth: int) -> dict[int, int]:
-        """Memory Relays, die von ``start`` aus über Verbindungen mit Nachricht
-        ``ACTV`` erreicht werden → kleinste Tiefe. Memory Relays werden nicht
-        durchlaufen."""
+        """Memory Relays reached from ``start`` via connections with message
+        ``ACTV`` → smallest depth. Memory Relays are not traversed."""
         found: dict[int, int] = {}
         queue = collections.deque([(start, 0)])
         seen = {start}
@@ -198,15 +197,15 @@ class Result:
     mrea_id: int
     layer: int
     type: str
-    object_id: int  # volle ID des Objekts aus PickupLocations.cs (PCKP bzw. SPFN)
-    savw_object_id: int  # Objekt, das in SAVW-Liste 3 steht
+    object_id: int  # full ID of the object from PickupLocations.cs (PCKP or SPFN)
+    savw_object_id: int  # object listed in SAVW list 3
     savw_object_type: str
     savw_object_index: int
-    relay_id: int | None  # Memory Relay, dessen Byte gesetzt wird
+    relay_id: int | None  # Memory Relay whose byte is set
     byte_index: int | None
-    status: str  # sicher | wahrscheinlich | unsicher
+    status: str  # certain | probable | uncertain
     reason: str
-    other_bytes: tuple[int, ...]  # weitere Bytes, die derselbe Vorgang setzt
+    other_bytes: tuple[int, ...]  # further bytes set by the same event
 
 
 def analyse(game: sp.GameFiles, locations: list[PickupLocation]) -> list[Result]:
@@ -219,7 +218,7 @@ def analyse(game: sp.GameFiles, locations: list[PickupLocation]) -> list[Result]
     results = []
     for loc in locations:
         if loc.index == 0:
-            continue  # Ort 0 wird nie gepatcht (E13)
+            continue  # location 0 is never patched (E13)
         mlvl, area_index = mrea_to_world[loc.mrea_id]
         savw = savw_cache.get(mlvl.savw_id)
         if savw is None:
@@ -231,18 +230,18 @@ def analyse(game: sp.GameFiles, locations: list[PickupLocation]) -> list[Result]
         main_type = "PCKP" if loc.type == "Pickup" else "SPFN"
         main = room.find(loc.layer, loc.local_id, main_type)
         if main is None:
-            raise ValueError(f"Ort {loc.index}: {main_type} {loc.local_id:#06x} fehlt in MREA {loc.mrea_id:#x}")
+            raise ValueError(f"Location {loc.index}: {main_type} {loc.local_id:#06x} missing in MREA {loc.mrea_id:#x}")
         if main.area != area_index or main.layer != loc.layer:
-            raise ValueError(f"Ort {loc.index}: Instanz-ID {main.instance_id:#x} passt nicht zu Bereich/Layer")
+            raise ValueError(f"Location {loc.index}: instance ID {main.instance_id:#x} does not match area/layer")
         second = None
         if loc.percentage_local_id is not None:
             second = room.find(loc.layer, loc.percentage_local_id, "PCKP")
             if second is None:
-                raise ValueError(f"Ort {loc.index}: zweites PCKP {loc.percentage_local_id:#06x} fehlt")
+                raise ValueError(f"Location {loc.index}: second PCKP {loc.percentage_local_id:#06x} missing")
 
         in_savw = [o for o in (main, second) if o is not None and o.instance_id in saved]
         if len(in_savw) != 1:
-            raise ValueError(f"Ort {loc.index}: {len(in_savw)} Objekte in SAVW-Liste 3")
+            raise ValueError(f"Location {loc.index}: {len(in_savw)} objects in SAVW list 3")
         savw_obj = in_savw[0]
 
         if loc.type == "Pickup":
@@ -273,7 +272,7 @@ def analyse(game: sp.GameFiles, locations: list[PickupLocation]) -> list[Result]
 
 def _pickup_relay(room: Room, relays: dict[int, int], pickup: int):
     cands = room.activated_relays(pickup, relays, MAX_DEPTH)
-    # Persistenz-Nachweis: das Memory Relay schaltet beim Laden den Pickup ab
+    # Proof of persistence: the Memory Relay switches the pickup off on load
     own = [
         r for r in cands
         if any(t == pickup and msg == "DCTV" for _s, msg, t in room.connections(r))
@@ -281,15 +280,15 @@ def _pickup_relay(room: Room, relays: dict[int, int], pickup: int):
     others = [r for r in cands if r not in own]
     if len(own) == 1:
         r = own[0]
-        reason = (f"PCKP aktiviert MRLY {r:#x} (Tiefe {cands[r]}), MRLY schaltet beim Laden den PCKP ab (DCTV)")
+        reason = (f"PCKP activates MRLY {r:#x} (depth {cands[r]}), MRLY switches the PCKP off on load (DCTV)")
         exclusive = room.activators(r) <= room.closure(pickup, MAX_DEPTH)
         if not exclusive:
-            return r, "unsicher", reason + "; MRLY wird auch von anderen Objekten aktiviert", others
-        return r, "sicher", reason, others
+            return r, "uncertain", reason + "; MRLY is also activated by other objects", others
+        return r, "certain", reason, others
     if not cands:
-        return None, "unsicher", "kein Memory Relay vom PCKP aus erreichbar", []
+        return None, "uncertain", "no Memory Relay reachable from the PCKP", []
     best = min(cands, key=lambda r: (cands[r], relays[r]))
-    return best, "unsicher", f"{len(own)} MRLY mit Rückverbindung, {len(cands)} Kandidaten", [
+    return best, "uncertain", f"{len(own)} MRLY with back connection, {len(cands)} candidates", [
         r for r in cands if r != best
     ]
 
@@ -297,8 +296,8 @@ def _pickup_relay(room: Room, relays: dict[int, int], pickup: int):
 def _special_relay(room: Room, relays: dict[int, int], spfn: int):
     triggers = [src for src, _st, msg in room.incoming[spfn] if msg == "ACTN"]
     if not triggers:
-        return None, "unsicher", "SPFN hat keinen Auslöser (ACTN)", []
-    # Stufe 1: Memory Relays am Auslöser selbst; Stufe 2 und 3: an seinen Vorgängern
+        return None, "uncertain", "SPFN has no trigger (ACTN)", []
+    # Level 1: Memory Relays at the trigger itself; levels 2 and 3: at its predecessors
     levels = [triggers]
     for _ in range(2):
         levels.append(sorted({a for t in levels[-1] for a, _s, _m in room.incoming[t]} - set().union(*levels)))
@@ -313,31 +312,32 @@ def _special_relay(room: Room, relays: dict[int, int], spfn: int):
         if not cands:
             continue
         exclusive = [r for r in cands if room.activators(r) <= chain]
-        where = "Auslöser" if level == 1 else f"Vorgänger des Auslösers (Stufe {level})"
+        where = "Trigger" if level == 1 else f"Predecessor of the trigger (level {level})"
         sources = lambda r: ", ".join(f"{t:#x}" for t in starts if r in [c[2] for c in room.connections(t)])  # noqa: E731
-        base = ("Keine Rückverbindung auf SPFN/PCKP (Muster der SpecialFunction-Orte: das MRLY startet beim Laden "
-                "ein Aufbau-Relay), nicht live geprüft")
+        base = ("No back connection to SPFN/PCKP (pattern of the SpecialFunction locations: the MRLY starts a setup "
+                "relay on load), not verified live")
         if len(exclusive) == 1:
             r = exclusive[0]
-            reason = f"{where} {sources(r)} aktiviert MRLY {r:#x} zugleich mit SPFN/PCKP, nur von dort aktiviert. {base}"
-            return r, "wahrscheinlich", reason, [c for c in cands if c != r]
-        # Mehrere exklusive Kandidaten: alle werden im selben Moment gesetzt. Bevorzugt
-        # wird das MRLY mit dem Lade-Muster ACTV -> ACTN an ein Relay (SRLY).
+            reason = (f"{where} {sources(r)} activates MRLY {r:#x} together with SPFN/PCKP, activated only from there. "
+                      f"{base}")
+            return r, "probable", reason, [c for c in cands if c != r]
+        # Several exclusive candidates: all are set at the same moment. Preferred is
+        # the MRLY with the load pattern ACTV -> ACTN to a relay (SRLY).
         setup = [r for r in exclusive if any(st == "ACTV" and msg == "ACTN" and room.type(t) == "SRLY"
                                              for st, msg, t in room.connections(r))]
         if len(setup) == 1:
             r = setup[0]
             rest = sorted((c for c in cands if c != r), key=relays.get)
-            reason = (f"{where} {sources(r)} aktiviert {len(cands)} MRLY nur von dort, zugleich mit SPFN/PCKP; "
-                      f"gewählt MRLY {r:#x} (Lade-Muster ACTV->ACTN an SRLY); die anderen (Byte "
-                      f"{', '.join(str(relays[c]) for c in rest)}) werden im selben Moment gesetzt. {base}")
-            return r, "wahrscheinlich", reason, rest
+            reason = (f"{where} {sources(r)} activates {len(cands)} MRLY only from there, together with SPFN/PCKP; "
+                      f"chosen MRLY {r:#x} (load pattern ACTV->ACTN to SRLY); the others (byte "
+                      f"{', '.join(str(relays[c]) for c in rest)}) are set at the same moment. {base}")
+            return r, "probable", reason, rest
         best = min(cands, key=lambda r: relays[r])
-        return best, "unsicher", (
-            f"{where} aktiviert {len(cands)} MRLY ({', '.join(str(relays[c]) for c in sorted(cands, key=relays.get))}), "
-            f"davon {len(exclusive)} nur von dort; gewählt: kleinster Index"
+        return best, "uncertain", (
+            f"{where} activates {len(cands)} MRLY ({', '.join(str(relays[c]) for c in sorted(cands, key=relays.get))}), "
+            f"{len(exclusive)} of them only from there; chosen: smallest index"
         ), [c for c in cands if c != best]
-    return None, "unsicher", "kein Memory Relay am Auslöser oder seinen Vorgängern", []
+    return None, "uncertain", "no Memory Relay at the trigger or its predecessors", []
 
 
 def _check_collisions(results: list[Result]) -> None:
@@ -349,31 +349,31 @@ def _check_collisions(results: list[Result]) -> None:
         if len(rs) > 1:
             names = ", ".join(str(r.index) for r in rs)
             for r in rs:
-                r.status = "unsicher"
-                r.reason += f"; Byte {byte} teilen sich die Orte {names}"
+                r.status = "uncertain"
+                r.reason += f"; byte {byte} is shared by locations {names}"
 
 
 # --------------------------------------------------------------------------- #
-# Ausgabe
+# Output
 # --------------------------------------------------------------------------- #
 
 
 def render(results: list[Result]) -> str:
     lines = [
-        '"""Location-Check-Tabelle für Metroid Prime 3 PAL (RM3P01). GENERIERT, nicht von Hand ändern.',
+        '"""Location check table for Metroid Prime 3 PAL (RM3P01). GENERATED, do not edit by hand.',
         "",
-        "Erzeugt mit ``apworld/tools/build_location_flags.py`` aus den Spieldaten (SAVW, MLVL, MREA) und",
-        "``PickupLocations.cs``. Format und Herleitung: ``docs/AP_SAVW_FORMAT.md``.",
+        "Generated with ``apworld/tools/build_location_flags.py`` from the game data (SAVW, MLVL, MREA) and",
+        "``PickupLocations.cs``. Format and derivation: ``docs/AP_SAVW_FORMAT.md``.",
         "",
-        "Flag-Block je Welt (``docs/AP_LIVE_TESTS.md``, Test D): 1024 Byte ab ``W + 0x1C``, ``W`` = Adresse der",
-        "MLVL-ID im Heap. Byte ``i`` = Zustand des Memory Relays ``i`` aus SAVW-Liste 1 (0 = aus, 1 = an).",
-        "Ein Ort gilt als eingesammelt, wenn ``LOCATION_FLAGS[ort][1]`` im Block seiner Welt ungleich 0 ist.",
+        "Flag block per world (``docs/AP_LIVE_TESTS.md``, test D): 1024 bytes from ``W + 0x1C``, ``W`` = address of",
+        "the MLVL ID in the heap. Byte ``i`` = state of Memory Relay ``i`` from SAVW list 1 (0 = off, 1 = on).",
+        "A location counts as collected when ``LOCATION_FLAGS[location][1]`` is non-zero in the block of its world.",
         '"""',
         "",
         "FLAG_BLOCK_SIZE = 1024",
         "",
-        "# Pickup-Index -> (MLVL-ID der Welt, Byte-Index im Flag-Block, volle Instanz-ID des Orts-Objekts).",
-        "# Das Orts-Objekt ist das PCKP bzw. bei SpecialFunction-Orten das SPFN aus PickupLocations.cs.",
+        "# Pickup index -> (world MLVL ID, byte index in the flag block, full instance ID of the location object).",
+        "# The location object is the PCKP, or for SpecialFunction locations the SPFN from PickupLocations.cs.",
         "LOCATION_FLAGS: dict[int, tuple[int, int, int]] = {",
     ]
     for r in results:
@@ -383,11 +383,11 @@ def render(results: list[Result]) -> str:
     lines += [
         "}",
         "",
-        "# Pickup-Index -> Einzelheiten:",
-        "#   relay_id        Memory Relay (volle Instanz-ID), dessen Byte gesetzt wird",
-        "#   savw_object     Objekt in SAVW-Liste 3 (PCKP; bei SpecialFunction das zweite PCKP)",
-        "#   status          sicher | wahrscheinlich | unsicher",
-        "#   other_bytes     weitere Bytes derselben Welt, die beim selben Vorgang gesetzt werden",
+        "# Pickup index -> details:",
+        "#   relay_id        Memory Relay (full instance ID) whose byte is set",
+        "#   savw_object     object in SAVW list 3 (PCKP; for SpecialFunction the second PCKP)",
+        "#   status          certain | probable | uncertain",
+        "#   other_bytes     further bytes of the same world that are set by the same event",
         "LOCATION_DETAILS: dict[int, dict[str, object]] = {",
     ]
     for r in results:
@@ -415,10 +415,10 @@ def render(results: list[Result]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("game_dir", help="entpacktes PAL-ISO (Ordner mit DATA/files)")
+    ap.add_argument("game_dir", help="extracted PAL ISO (folder with DATA/files)")
     ap.add_argument("--locations", default=DEFAULT_LOCATIONS)
     ap.add_argument("--output", default=DEFAULT_OUTPUT)
-    ap.add_argument("--check", action="store_true", help="nur vergleichen, Exit 1 bei Abweichung")
+    ap.add_argument("--check", action="store_true", help="compare only, exit 1 on difference")
     args = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -426,18 +426,18 @@ def main(argv: list[str] | None = None) -> int:
     results = analyse(sp.GameFiles(args.game_dir), read_pickup_locations(args.locations))
     text = render(results)
     counts = collections.Counter(r.status for r in results)
-    print(f"{len(results)} Orte: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
+    print(f"{len(results)} locations: " + ", ".join(f"{k} {v}" for k, v in sorted(counts.items())))
     for r in results:
-        if r.status != "sicher":
-            print(f"  Ort {r.index}: {r.status}, Byte {r.byte_index}: {r.reason}")
+        if r.status != "certain":
+            print(f"  location {r.index}: {r.status}, byte {r.byte_index}: {r.reason}")
     if args.check:
-        with open(args.output, encoding="utf-8") as f:  # CRLF nach Windows-Checkout zählt nicht als Abweichung
+        with open(args.output, encoding="utf-8") as f:  # CRLF after a Windows checkout does not count as a difference
             same = f.read() == text
-        print("unverändert" if same else f"ABWEICHUNG zu {args.output}")
+        print("unchanged" if same else f"DIFFERENCE from {args.output}")
         return 0 if same else 1
     with open(args.output, "w", encoding="utf-8", newline="\n") as f:
         f.write(text)
-    print(f"geschrieben: {args.output}")
+    print(f"written: {args.output}")
     return 0
 
 

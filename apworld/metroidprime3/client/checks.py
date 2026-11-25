@@ -16,7 +16,7 @@ class ByteInfo:
     pickup_index: int | None = None
     location_name: str | None = None
     room: str | None = None
-    status: str | None = None  # location_flags.py status: "sicher" (certain) | "wahrscheinlich" (probable)
+    status: str | None = None  # location_flags.py status: "certain" | "probable" | "uncertain"
 
 
 class LocationTable:

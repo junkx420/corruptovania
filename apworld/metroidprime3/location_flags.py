@@ -1,124 +1,124 @@
-"""Location-Check-Tabelle für Metroid Prime 3 PAL (RM3P01). GENERIERT, nicht von Hand ändern.
+"""Location check table for Metroid Prime 3 PAL (RM3P01). GENERATED, do not edit by hand.
 
-Erzeugt mit ``apworld/tools/build_location_flags.py`` aus den Spieldaten (SAVW, MLVL, MREA) und
-``PickupLocations.cs``. Format und Herleitung: ``docs/AP_SAVW_FORMAT.md``.
+Generated with ``apworld/tools/build_location_flags.py`` from the game data (SAVW, MLVL, MREA) and
+``PickupLocations.cs``. Format and derivation: ``docs/AP_SAVW_FORMAT.md``.
 
-Flag-Block je Welt (``docs/AP_LIVE_TESTS.md``, Test D): 1024 Byte ab ``W + 0x1C``, ``W`` = Adresse der
-MLVL-ID im Heap. Byte ``i`` = Zustand des Memory Relays ``i`` aus SAVW-Liste 1 (0 = aus, 1 = an).
-Ein Ort gilt als eingesammelt, wenn ``LOCATION_FLAGS[ort][1]`` im Block seiner Welt ungleich 0 ist.
+Flag block per world (``docs/AP_LIVE_TESTS.md``, test D): 1024 bytes from ``W + 0x1C``, ``W`` = address of
+the MLVL ID in the heap. Byte ``i`` = state of Memory Relay ``i`` from SAVW list 1 (0 = off, 1 = on).
+A location counts as collected when ``LOCATION_FLAGS[location][1]`` is non-zero in the block of its world.
 """
 
 FLAG_BLOCK_SIZE = 1024
 
-# Pickup-Index -> (MLVL-ID der Welt, Byte-Index im Flag-Block, volle Instanz-ID des Orts-Objekts).
-# Das Orts-Objekt ist das PCKP bzw. bei SpecialFunction-Orten das SPFN aus PickupLocations.cs.
+# Pickup index -> (world MLVL ID, byte index in the flag block, full instance ID of the location object).
+# The location object is the PCKP, or for SpecialFunction locations the SPFN from PickupLocations.cs.
 LOCATION_FLAGS: dict[int, tuple[int, int, int]] = {
-    1: (0x37A9E86F0A0CAF6F, 16, 0x001500F3),  # G.F.S. Olympus, sicher
-    2: (0x37A9E86F0A0CAF6F, 23, 0x00170036),  # G.F.S. Olympus, sicher
-    3: (0x6FB8EF2A9523C343, 7, 0x0002046B),  # Norion, sicher
-    4: (0x6FB8EF2A9523C343, 8, 0x40020474),  # Norion, sicher
-    5: (0x6FB8EF2A9523C343, 15, 0x0004015C),  # Norion, sicher
-    6: (0x6FB8EF2A9523C343, 119, 0x00070311),  # Norion, sicher
-    7: (0x6FB8EF2A9523C343, 36, 0x000A0153),  # Norion, sicher
-    8: (0x6FB8EF2A9523C343, 46, 0x000D0059),  # Norion, sicher
-    9: (0x6FB8EF2A9523C343, 53, 0x000F01EE),  # Norion, wahrscheinlich
-    10: (0x6FB8EF2A9523C343, 57, 0x00110010),  # Norion, sicher
-    11: (0xC133F919C108BDF9, 1, 0x00020032),  # G.F.S. Valhalla, sicher
-    12: (0xC133F919C108BDF9, 11, 0x00090013),  # G.F.S. Valhalla, sicher
-    13: (0xC133F919C108BDF9, 12, 0x000A0012),  # G.F.S. Valhalla, sicher
-    14: (0xC133F919C108BDF9, 55, 0x000D0162),  # G.F.S. Valhalla, sicher
-    15: (0xC133F919C108BDF9, 18, 0x140D0038),  # G.F.S. Valhalla, sicher
-    16: (0xC133F919C108BDF9, 19, 0x000F0014),  # G.F.S. Valhalla, sicher
-    17: (0x9BA9292D588D6EB8, 6, 0x0003007D),  # Bryyo - Fire, sicher
-    18: (0x9BA9292D588D6EB8, 10, 0x000400E4),  # Bryyo - Fire, sicher
-    19: (0x9BA9292D588D6EB8, 14, 0x000602A3),  # Bryyo - Fire, sicher
-    20: (0x9BA9292D588D6EB8, 20, 0x00080062),  # Bryyo - Fire, sicher
-    21: (0x9BA9292D588D6EB8, 148, 0x0008020C),  # Bryyo - Fire, sicher
-    22: (0x9BA9292D588D6EB8, 26, 0x200A026F),  # Bryyo - Fire, sicher
-    23: (0x9BA9292D588D6EB8, 28, 0x380A008F),  # Bryyo - Fire, sicher
-    24: (0x9F059B53561A9695, 14, 0x0004005A),  # Bryyo - Reptilicus, sicher
-    25: (0x9F059B53561A9695, 20, 0x00060044),  # Bryyo - Reptilicus, sicher
-    26: (0x9F059B53561A9695, 22, 0x0007001D),  # Bryyo - Reptilicus, sicher
-    27: (0x9F059B53561A9695, 24, 0x00080145),  # Bryyo - Reptilicus, sicher
-    28: (0x9F059B53561A9695, 25, 0x000900D1),  # Bryyo - Reptilicus, sicher
-    29: (0x9F059B53561A9695, 27, 0x000A0198),  # Bryyo - Reptilicus, sicher
-    30: (0x9F059B53561A9695, 148, 0x000C0017),  # Bryyo - Reptilicus, sicher
-    31: (0x9F059B53561A9695, 47, 0x000C0027),  # Bryyo - Reptilicus, sicher
-    32: (0x9F059B53561A9695, 253, 0x000D04CC),  # Bryyo - Reptilicus, sicher
-    33: (0x9F059B53561A9695, 66, 0x000E01F1),  # Bryyo - Reptilicus, sicher
-    34: (0x9F059B53561A9695, 68, 0x000E032B),  # Bryyo - Reptilicus, wahrscheinlich
-    35: (0x9F059B53561A9695, 70, 0x00100019),  # Bryyo - Reptilicus, sicher
-    36: (0x9F059B53561A9695, 76, 0x00140019),  # Bryyo - Reptilicus, sicher
-    37: (0x9F059B53561A9695, 150, 0x001600A5),  # Bryyo - Reptilicus, sicher
-    38: (0x9F059B53561A9695, 80, 0x001700C6),  # Bryyo - Reptilicus, sicher
-    39: (0x9F059B53561A9695, 93, 0x0019002E),  # Bryyo - Reptilicus, sicher
-    40: (0x9F059B53561A9695, 101, 0x001B0025),  # Bryyo - Reptilicus, sicher
-    41: (0x9F059B53561A9695, 105, 0x001F0022),  # Bryyo - Reptilicus, sicher
-    42: (0x9F059B53561A9695, 109, 0x00210127),  # Bryyo - Reptilicus, wahrscheinlich
-    43: (0x9F059B53561A9695, 107, 0x102100CB),  # Bryyo - Reptilicus, wahrscheinlich
-    44: (0x9F059B53561A9695, 117, 0x00220063),  # Bryyo - Reptilicus, sicher
-    45: (0x9F059B53561A9695, 122, 0x002300C9),  # Bryyo - Reptilicus, sicher
-    46: (0x9F059B53561A9695, 143, 0x0026007C),  # Bryyo - Reptilicus, sicher
-    47: (0x9F059B53561A9695, 144, 0x00270019),  # Bryyo - Reptilicus, sicher
-    48: (0xB0D67636D61F3868, 20, 0x00030083),  # Bryyo - Ice, sicher
-    49: (0xB0D67636D61F3868, 44, 0x0003015A),  # Bryyo - Ice, sicher
-    50: (0xB0D67636D61F3868, 21, 0x00050073),  # Bryyo - Ice, sicher
-    51: (0xC37F4AD853284C78, 6, 0x000203A8),  # SkyTown, Elysia - Main, sicher
-    52: (0xC37F4AD853284C78, 1, 0x30020366),  # SkyTown, Elysia - Main, sicher
-    53: (0xC37F4AD853284C78, 12, 0x000401D8),  # SkyTown, Elysia - Main, sicher
-    54: (0xC37F4AD853284C78, 13, 0x00050031),  # SkyTown, Elysia - Main, sicher
-    55: (0xC37F4AD853284C78, 36, 0x000A00DE),  # SkyTown, Elysia - Main, sicher
-    56: (0xC37F4AD853284C78, 40, 0x000B0200),  # SkyTown, Elysia - Main, sicher
-    57: (0xC37F4AD853284C78, 47, 0x000C019B),  # SkyTown, Elysia - Main, sicher
-    58: (0xC37F4AD853284C78, 64, 0x00140153),  # SkyTown, Elysia - Main, sicher
-    59: (0xC37F4AD853284C78, 68, 0x001600E9),  # SkyTown, Elysia - Main, sicher
-    60: (0xC37F4AD853284C78, 76, 0x00170043),  # SkyTown, Elysia - Main, sicher
-    61: (0xC37F4AD853284C78, 75, 0x00170444),  # SkyTown, Elysia - Main, sicher
-    62: (0xC37F4AD853284C78, 81, 0x00180165),  # SkyTown, Elysia - Main, wahrscheinlich
-    63: (0xC37F4AD853284C78, 85, 0x08180084),  # SkyTown, Elysia - Main, sicher
-    64: (0xC37F4AD853284C78, 90, 0x00190182),  # SkyTown, Elysia - Main, sicher
-    65: (0xC37F4AD853284C78, 91, 0x0019008F),  # SkyTown, Elysia - Main, sicher
-    66: (0xC37F4AD853284C78, 114, 0x002003D2),  # SkyTown, Elysia - Main, sicher
-    67: (0xE0F0622642E42CAB, 6, 0x00040521),  # SkyTown, Elysia - Pod, sicher
-    68: (0xE0F0622642E42CAB, 26, 0x000D0081),  # SkyTown, Elysia - Pod, sicher
-    69: (0xE0F0622642E42CAB, 40, 0x001000D6),  # SkyTown, Elysia - Pod, sicher
-    70: (0xE0F0622642E42CAB, 42, 0x0010035F),  # SkyTown, Elysia - Pod, wahrscheinlich
-    71: (0xE0F0622642E42CAB, 44, 0x0011009A),  # SkyTown, Elysia - Pod, sicher
-    72: (0xE0F0622642E42CAB, 61, 0x00160062),  # SkyTown, Elysia - Pod, sicher
-    73: (0xE0F0622642E42CAB, 81, 0x001C02F3),  # SkyTown, Elysia - Pod, wahrscheinlich
-    74: (0xE0F0622642E42CAB, 86, 0x001D0010),  # SkyTown, Elysia - Pod, sicher
-    75: (0x106F7F4FEFB651D9, 131, 0x00040469),  # Pirate Homeworld - Research, sicher
-    76: (0x106F7F4FEFB651D9, 17, 0x100401D7),  # Pirate Homeworld - Research, sicher
-    77: (0x106F7F4FEFB651D9, 199, 0x000501F9),  # Pirate Homeworld - Research, sicher
-    78: (0x106F7F4FEFB651D9, 36, 0x00060195),  # Pirate Homeworld - Research, sicher
-    79: (0x106F7F4FEFB651D9, 45, 0x00070185),  # Pirate Homeworld - Research, wahrscheinlich
-    80: (0x106F7F4FEFB651D9, 53, 0x2407008D),  # Pirate Homeworld - Research, sicher
-    81: (0x106F7F4FEFB651D9, 60, 0x0009004C),  # Pirate Homeworld - Research, sicher
-    82: (0x106F7F4FEFB651D9, 97, 0x000D0005),  # Pirate Homeworld - Research, sicher
-    83: (0x106F7F4FEFB651D9, 206, 0x000E0106),  # Pirate Homeworld - Research, sicher
-    84: (0x106F7F4FEFB651D9, 147, 0x000F004B),  # Pirate Homeworld - Research, sicher
-    85: (0x106F7F4FEFB651D9, 150, 0x000F00D8),  # Pirate Homeworld - Research, sicher
-    86: (0x38098524EF78B6D2, 1, 0x00030096),  # Pirate Homeworld - Command, sicher
-    87: (0x38098524EF78B6D2, 7, 0x000402AB),  # Pirate Homeworld - Command, sicher
-    88: (0x38098524EF78B6D2, 9, 0x0005025B),  # Pirate Homeworld - Command, sicher
-    89: (0x38098524EF78B6D2, 10, 0x000502A6),  # Pirate Homeworld - Command, wahrscheinlich
-    90: (0x38098524EF78B6D2, 178, 0x4406053C),  # Pirate Homeworld - Command, sicher
-    91: (0x38098524EF78B6D2, 44, 0x001000A8),  # Pirate Homeworld - Command, sicher
-    92: (0x38098524EF78B6D2, 86, 0x00140047),  # Pirate Homeworld - Command, sicher
-    93: (0xDD1C4E18E7291BEF, 1, 0x0003002B),  # Pirate Homeworld - Mines, wahrscheinlich
-    94: (0xDD1C4E18E7291BEF, 3, 0x00030157),  # Pirate Homeworld - Mines, sicher
-    95: (0xDD1C4E18E7291BEF, 36, 0x0009029F),  # Pirate Homeworld - Mines, sicher
-    96: (0xDD1C4E18E7291BEF, 38, 0x000B0057),  # Pirate Homeworld - Mines, sicher
-    97: (0x94BCA72AB1CFEC05, 0, 0x18040083),  # SkyTown, Elysia - Seed, sicher
-    98: (0xCD79C43EB6C801FD, 0, 0x1804014D),  # Bryyo - Seed, sicher
-    99: (0xDE97D48188CA8C99, 0, 0x100400A7),  # Pirate Homeworld - Seed, sicher
+    1: (0x37A9E86F0A0CAF6F, 16, 0x001500F3),  # G.F.S. Olympus, certain
+    2: (0x37A9E86F0A0CAF6F, 23, 0x00170036),  # G.F.S. Olympus, certain
+    3: (0x6FB8EF2A9523C343, 7, 0x0002046B),  # Norion, certain
+    4: (0x6FB8EF2A9523C343, 8, 0x40020474),  # Norion, certain
+    5: (0x6FB8EF2A9523C343, 15, 0x0004015C),  # Norion, certain
+    6: (0x6FB8EF2A9523C343, 119, 0x00070311),  # Norion, certain
+    7: (0x6FB8EF2A9523C343, 36, 0x000A0153),  # Norion, certain
+    8: (0x6FB8EF2A9523C343, 46, 0x000D0059),  # Norion, certain
+    9: (0x6FB8EF2A9523C343, 53, 0x000F01EE),  # Norion, probable
+    10: (0x6FB8EF2A9523C343, 57, 0x00110010),  # Norion, certain
+    11: (0xC133F919C108BDF9, 1, 0x00020032),  # G.F.S. Valhalla, certain
+    12: (0xC133F919C108BDF9, 11, 0x00090013),  # G.F.S. Valhalla, certain
+    13: (0xC133F919C108BDF9, 12, 0x000A0012),  # G.F.S. Valhalla, certain
+    14: (0xC133F919C108BDF9, 55, 0x000D0162),  # G.F.S. Valhalla, certain
+    15: (0xC133F919C108BDF9, 18, 0x140D0038),  # G.F.S. Valhalla, certain
+    16: (0xC133F919C108BDF9, 19, 0x000F0014),  # G.F.S. Valhalla, certain
+    17: (0x9BA9292D588D6EB8, 6, 0x0003007D),  # Bryyo - Fire, certain
+    18: (0x9BA9292D588D6EB8, 10, 0x000400E4),  # Bryyo - Fire, certain
+    19: (0x9BA9292D588D6EB8, 14, 0x000602A3),  # Bryyo - Fire, certain
+    20: (0x9BA9292D588D6EB8, 20, 0x00080062),  # Bryyo - Fire, certain
+    21: (0x9BA9292D588D6EB8, 148, 0x0008020C),  # Bryyo - Fire, certain
+    22: (0x9BA9292D588D6EB8, 26, 0x200A026F),  # Bryyo - Fire, certain
+    23: (0x9BA9292D588D6EB8, 28, 0x380A008F),  # Bryyo - Fire, certain
+    24: (0x9F059B53561A9695, 14, 0x0004005A),  # Bryyo - Reptilicus, certain
+    25: (0x9F059B53561A9695, 20, 0x00060044),  # Bryyo - Reptilicus, certain
+    26: (0x9F059B53561A9695, 22, 0x0007001D),  # Bryyo - Reptilicus, certain
+    27: (0x9F059B53561A9695, 24, 0x00080145),  # Bryyo - Reptilicus, certain
+    28: (0x9F059B53561A9695, 25, 0x000900D1),  # Bryyo - Reptilicus, certain
+    29: (0x9F059B53561A9695, 27, 0x000A0198),  # Bryyo - Reptilicus, certain
+    30: (0x9F059B53561A9695, 148, 0x000C0017),  # Bryyo - Reptilicus, certain
+    31: (0x9F059B53561A9695, 47, 0x000C0027),  # Bryyo - Reptilicus, certain
+    32: (0x9F059B53561A9695, 253, 0x000D04CC),  # Bryyo - Reptilicus, certain
+    33: (0x9F059B53561A9695, 66, 0x000E01F1),  # Bryyo - Reptilicus, certain
+    34: (0x9F059B53561A9695, 68, 0x000E032B),  # Bryyo - Reptilicus, probable
+    35: (0x9F059B53561A9695, 70, 0x00100019),  # Bryyo - Reptilicus, certain
+    36: (0x9F059B53561A9695, 76, 0x00140019),  # Bryyo - Reptilicus, certain
+    37: (0x9F059B53561A9695, 150, 0x001600A5),  # Bryyo - Reptilicus, certain
+    38: (0x9F059B53561A9695, 80, 0x001700C6),  # Bryyo - Reptilicus, certain
+    39: (0x9F059B53561A9695, 93, 0x0019002E),  # Bryyo - Reptilicus, certain
+    40: (0x9F059B53561A9695, 101, 0x001B0025),  # Bryyo - Reptilicus, certain
+    41: (0x9F059B53561A9695, 105, 0x001F0022),  # Bryyo - Reptilicus, certain
+    42: (0x9F059B53561A9695, 109, 0x00210127),  # Bryyo - Reptilicus, probable
+    43: (0x9F059B53561A9695, 107, 0x102100CB),  # Bryyo - Reptilicus, probable
+    44: (0x9F059B53561A9695, 117, 0x00220063),  # Bryyo - Reptilicus, certain
+    45: (0x9F059B53561A9695, 122, 0x002300C9),  # Bryyo - Reptilicus, certain
+    46: (0x9F059B53561A9695, 143, 0x0026007C),  # Bryyo - Reptilicus, certain
+    47: (0x9F059B53561A9695, 144, 0x00270019),  # Bryyo - Reptilicus, certain
+    48: (0xB0D67636D61F3868, 20, 0x00030083),  # Bryyo - Ice, certain
+    49: (0xB0D67636D61F3868, 44, 0x0003015A),  # Bryyo - Ice, certain
+    50: (0xB0D67636D61F3868, 21, 0x00050073),  # Bryyo - Ice, certain
+    51: (0xC37F4AD853284C78, 6, 0x000203A8),  # SkyTown, Elysia - Main, certain
+    52: (0xC37F4AD853284C78, 1, 0x30020366),  # SkyTown, Elysia - Main, certain
+    53: (0xC37F4AD853284C78, 12, 0x000401D8),  # SkyTown, Elysia - Main, certain
+    54: (0xC37F4AD853284C78, 13, 0x00050031),  # SkyTown, Elysia - Main, certain
+    55: (0xC37F4AD853284C78, 36, 0x000A00DE),  # SkyTown, Elysia - Main, certain
+    56: (0xC37F4AD853284C78, 40, 0x000B0200),  # SkyTown, Elysia - Main, certain
+    57: (0xC37F4AD853284C78, 47, 0x000C019B),  # SkyTown, Elysia - Main, certain
+    58: (0xC37F4AD853284C78, 64, 0x00140153),  # SkyTown, Elysia - Main, certain
+    59: (0xC37F4AD853284C78, 68, 0x001600E9),  # SkyTown, Elysia - Main, certain
+    60: (0xC37F4AD853284C78, 76, 0x00170043),  # SkyTown, Elysia - Main, certain
+    61: (0xC37F4AD853284C78, 75, 0x00170444),  # SkyTown, Elysia - Main, certain
+    62: (0xC37F4AD853284C78, 81, 0x00180165),  # SkyTown, Elysia - Main, probable
+    63: (0xC37F4AD853284C78, 85, 0x08180084),  # SkyTown, Elysia - Main, certain
+    64: (0xC37F4AD853284C78, 90, 0x00190182),  # SkyTown, Elysia - Main, certain
+    65: (0xC37F4AD853284C78, 91, 0x0019008F),  # SkyTown, Elysia - Main, certain
+    66: (0xC37F4AD853284C78, 114, 0x002003D2),  # SkyTown, Elysia - Main, certain
+    67: (0xE0F0622642E42CAB, 6, 0x00040521),  # SkyTown, Elysia - Pod, certain
+    68: (0xE0F0622642E42CAB, 26, 0x000D0081),  # SkyTown, Elysia - Pod, certain
+    69: (0xE0F0622642E42CAB, 40, 0x001000D6),  # SkyTown, Elysia - Pod, certain
+    70: (0xE0F0622642E42CAB, 42, 0x0010035F),  # SkyTown, Elysia - Pod, probable
+    71: (0xE0F0622642E42CAB, 44, 0x0011009A),  # SkyTown, Elysia - Pod, certain
+    72: (0xE0F0622642E42CAB, 61, 0x00160062),  # SkyTown, Elysia - Pod, certain
+    73: (0xE0F0622642E42CAB, 81, 0x001C02F3),  # SkyTown, Elysia - Pod, probable
+    74: (0xE0F0622642E42CAB, 86, 0x001D0010),  # SkyTown, Elysia - Pod, certain
+    75: (0x106F7F4FEFB651D9, 131, 0x00040469),  # Pirate Homeworld - Research, certain
+    76: (0x106F7F4FEFB651D9, 17, 0x100401D7),  # Pirate Homeworld - Research, certain
+    77: (0x106F7F4FEFB651D9, 199, 0x000501F9),  # Pirate Homeworld - Research, certain
+    78: (0x106F7F4FEFB651D9, 36, 0x00060195),  # Pirate Homeworld - Research, certain
+    79: (0x106F7F4FEFB651D9, 45, 0x00070185),  # Pirate Homeworld - Research, probable
+    80: (0x106F7F4FEFB651D9, 53, 0x2407008D),  # Pirate Homeworld - Research, certain
+    81: (0x106F7F4FEFB651D9, 60, 0x0009004C),  # Pirate Homeworld - Research, certain
+    82: (0x106F7F4FEFB651D9, 97, 0x000D0005),  # Pirate Homeworld - Research, certain
+    83: (0x106F7F4FEFB651D9, 206, 0x000E0106),  # Pirate Homeworld - Research, certain
+    84: (0x106F7F4FEFB651D9, 147, 0x000F004B),  # Pirate Homeworld - Research, certain
+    85: (0x106F7F4FEFB651D9, 150, 0x000F00D8),  # Pirate Homeworld - Research, certain
+    86: (0x38098524EF78B6D2, 1, 0x00030096),  # Pirate Homeworld - Command, certain
+    87: (0x38098524EF78B6D2, 7, 0x000402AB),  # Pirate Homeworld - Command, certain
+    88: (0x38098524EF78B6D2, 9, 0x0005025B),  # Pirate Homeworld - Command, certain
+    89: (0x38098524EF78B6D2, 10, 0x000502A6),  # Pirate Homeworld - Command, probable
+    90: (0x38098524EF78B6D2, 178, 0x4406053C),  # Pirate Homeworld - Command, certain
+    91: (0x38098524EF78B6D2, 44, 0x001000A8),  # Pirate Homeworld - Command, certain
+    92: (0x38098524EF78B6D2, 86, 0x00140047),  # Pirate Homeworld - Command, certain
+    93: (0xDD1C4E18E7291BEF, 1, 0x0003002B),  # Pirate Homeworld - Mines, probable
+    94: (0xDD1C4E18E7291BEF, 3, 0x00030157),  # Pirate Homeworld - Mines, certain
+    95: (0xDD1C4E18E7291BEF, 36, 0x0009029F),  # Pirate Homeworld - Mines, certain
+    96: (0xDD1C4E18E7291BEF, 38, 0x000B0057),  # Pirate Homeworld - Mines, certain
+    97: (0x94BCA72AB1CFEC05, 0, 0x18040083),  # SkyTown, Elysia - Seed, certain
+    98: (0xCD79C43EB6C801FD, 0, 0x1804014D),  # Bryyo - Seed, certain
+    99: (0xDE97D48188CA8C99, 0, 0x100400A7),  # Pirate Homeworld - Seed, certain
 }
 
-# Pickup-Index -> Einzelheiten:
-#   relay_id        Memory Relay (volle Instanz-ID), dessen Byte gesetzt wird
-#   savw_object     Objekt in SAVW-Liste 3 (PCKP; bei SpecialFunction das zweite PCKP)
-#   status          sicher | wahrscheinlich | unsicher
-#   other_bytes     weitere Bytes derselben Welt, die beim selben Vorgang gesetzt werden
+# Pickup index -> details:
+#   relay_id        Memory Relay (full instance ID) whose byte is set
+#   savw_object     object in SAVW list 3 (PCKP; for SpecialFunction the second PCKP)
+#   status          certain | probable | uncertain
+#   other_bytes     further bytes of the same world that are set by the same event
 LOCATION_DETAILS: dict[int, dict[str, object]] = {
     1: {
         "type": 'Pickup',
@@ -127,8 +127,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0015013C,
         "savw_object": ('PCKP', 0x001500F3, 0),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x15013c (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x15013c (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     2: {
@@ -138,8 +138,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00170034,
         "savw_object": ('PCKP', 0x00170036, 1),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x170034 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x170034 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     3: {
@@ -149,8 +149,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00020403,
         "savw_object": ('PCKP', 0x0002046B, 0),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x20403 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x20403 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     4: {
@@ -160,8 +160,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 16,
         "relay_id": 0x000202E0,
         "savw_object": ('PCKP', 0x40020474, 1),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x202e0 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x202e0 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     5: {
@@ -171,8 +171,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0004015E,
         "savw_object": ('PCKP', 0x0004015C, 2),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x4015e (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x4015e (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     6: {
@@ -182,8 +182,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00070317,
         "savw_object": ('PCKP', 0x00070311, 19),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x70317 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x70317 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     7: {
@@ -193,8 +193,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000A0156,
         "savw_object": ('PCKP', 0x000A0153, 3),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xa0156 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xa0156 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     8: {
@@ -204,8 +204,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000D003C,
         "savw_object": ('PCKP', 0x000D0059, 4),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xd003c (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xd003c (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     9: {
@@ -215,8 +215,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000F01F1,
         "savw_object": ('PCKP', 0x000F026C, 30),
-        "status": 'wahrscheinlich',
-        "reason": 'Auslöser 0xf01f4 aktiviert MRLY 0xf01f1 zugleich mit SPFN/PCKP, nur von dort aktiviert. Keine Rückverbindung auf SPFN/PCKP (Muster der SpecialFunction-Orte: das MRLY startet beim Laden ein Aufbau-Relay), nicht live geprüft',
+        "status": 'probable',
+        "reason": 'Trigger 0xf01f4 activates MRLY 0xf01f1 together with SPFN/PCKP, activated only from there. No back connection to SPFN/PCKP (pattern of the SpecialFunction locations: the MRLY starts a setup relay on load), not verified live',
         "other_bytes": (),
     },
     10: {
@@ -226,8 +226,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0011000B,
         "savw_object": ('PCKP', 0x00110010, 5),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x11000b (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x11000b (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     11: {
@@ -237,8 +237,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00020039,
         "savw_object": ('PCKP', 0x00020032, 0),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x20039 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x20039 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     12: {
@@ -248,8 +248,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00090014,
         "savw_object": ('PCKP', 0x00090013, 1),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x90014 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x90014 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     13: {
@@ -259,8 +259,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000A0014,
         "savw_object": ('PCKP', 0x000A0012, 2),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xa0014 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xa0014 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     14: {
@@ -270,8 +270,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000D0163,
         "savw_object": ('PCKP', 0x000D0162, 17),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xd0163 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xd0163 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     15: {
@@ -281,8 +281,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 5,
         "relay_id": 0x140D003A,
         "savw_object": ('PCKP', 0x140D0038, 3),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x140d003a (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x140d003a (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     16: {
@@ -292,8 +292,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000F0015,
         "savw_object": ('PCKP', 0x000F0014, 4),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xf0015 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xf0015 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     17: {
@@ -303,8 +303,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00030011,
         "savw_object": ('PCKP', 0x0003007D, 0),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x30011 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x30011 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     18: {
@@ -314,8 +314,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000400EA,
         "savw_object": ('PCKP', 0x000400E4, 1),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x400ea (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x400ea (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     19: {
@@ -325,8 +325,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000602A4,
         "savw_object": ('PCKP', 0x000602A3, 2),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x602a4 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x602a4 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     20: {
@@ -336,8 +336,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00080066,
         "savw_object": ('PCKP', 0x00080062, 3),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x80066 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x80066 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     21: {
@@ -347,8 +347,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0008020A,
         "savw_object": ('PCKP', 0x0008020C, 33),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x8020a (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x8020a (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     22: {
@@ -358,8 +358,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 8,
         "relay_id": 0x200A02B3,
         "savw_object": ('PCKP', 0x200A026F, 5),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x200a02b3 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x200a02b3 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     23: {
@@ -369,8 +369,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 14,
         "relay_id": 0x380A036D,
         "savw_object": ('PCKP', 0x380A008F, 15),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x380a036d (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x380a036d (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     24: {
@@ -380,8 +380,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0004005D,
         "savw_object": ('PCKP', 0x0004005A, 0),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x4005d (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x4005d (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     25: {
@@ -391,8 +391,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0006003A,
         "savw_object": ('PCKP', 0x00060044, 1),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x6003a (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x6003a (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     26: {
@@ -402,8 +402,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00070019,
         "savw_object": ('PCKP', 0x0007001D, 2),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x70019 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x70019 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     27: {
@@ -413,8 +413,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00080142,
         "savw_object": ('PCKP', 0x00080145, 3),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x80142 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x80142 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     28: {
@@ -424,8 +424,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000900CC,
         "savw_object": ('PCKP', 0x000900D1, 4),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x900cc (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x900cc (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     29: {
@@ -435,8 +435,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000A0199,
         "savw_object": ('PCKP', 0x000A0198, 5),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xa0199 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xa0199 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     30: {
@@ -446,8 +446,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000C0016,
         "savw_object": ('PCKP', 0x000C0017, 7),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xc0016 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xc0016 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     31: {
@@ -457,8 +457,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000C010D,
         "savw_object": ('PCKP', 0x000C0027, 8),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xc010d (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xc010d (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     32: {
@@ -468,8 +468,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000D04D0,
         "savw_object": ('PCKP', 0x000D04CC, 68),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xd04d0 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xd04d0 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     33: {
@@ -479,8 +479,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000E01F3,
         "savw_object": ('PCKP', 0x000E01F1, 9),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xe01f3 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xe01f3 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     34: {
@@ -490,8 +490,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000E031B,
         "savw_object": ('PCKP', 0x000E04BA, 69),
-        "status": 'wahrscheinlich',
-        "reason": 'Auslöser 0xe031d aktiviert 2 MRLY nur von dort, zugleich mit SPFN/PCKP; gewählt MRLY 0xe031b (Lade-Muster ACTV->ACTN an SRLY); die anderen (Byte 54) werden im selben Moment gesetzt. Keine Rückverbindung auf SPFN/PCKP (Muster der SpecialFunction-Orte: das MRLY startet beim Laden ein Aufbau-Relay), nicht live geprüft',
+        "status": 'probable',
+        "reason": 'Trigger 0xe031d activates 2 MRLY only from there, together with SPFN/PCKP; chosen MRLY 0xe031b (load pattern ACTV->ACTN to SRLY); the others (byte 54) are set at the same moment. No back connection to SPFN/PCKP (pattern of the SpecialFunction locations: the MRLY starts a setup relay on load), not verified live',
         "other_bytes": (54,),
     },
     35: {
@@ -501,8 +501,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0010001B,
         "savw_object": ('PCKP', 0x00100019, 10),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x10001b (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x10001b (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     36: {
@@ -512,8 +512,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00140051,
         "savw_object": ('PCKP', 0x00140019, 13),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x140051 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x140051 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     37: {
@@ -523,8 +523,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00160093,
         "savw_object": ('PCKP', 0x001600A5, 17),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x160093 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x160093 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     38: {
@@ -534,8 +534,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0017003A,
         "savw_object": ('PCKP', 0x001700C6, 18),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x17003a (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x17003a (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     39: {
@@ -545,8 +545,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00190037,
         "savw_object": ('PCKP', 0x0019002E, 24),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x190037 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x190037 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     40: {
@@ -556,8 +556,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x001B001D,
         "savw_object": ('PCKP', 0x001B0025, 25),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x1b001d (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x1b001d (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     41: {
@@ -567,8 +567,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x001F0017,
         "savw_object": ('PCKP', 0x001F0022, 26),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x1f0017 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x1f0017 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     42: {
@@ -578,8 +578,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0021014C,
         "savw_object": ('PCKP', 0x002103AB, 70),
-        "status": 'wahrscheinlich',
-        "reason": 'Auslöser 0x210152 aktiviert MRLY 0x21014c zugleich mit SPFN/PCKP, nur von dort aktiviert. Keine Rückverbindung auf SPFN/PCKP (Muster der SpecialFunction-Orte: das MRLY startet beim Laden ein Aufbau-Relay), nicht live geprüft',
+        "status": 'probable',
+        "reason": 'Trigger 0x210152 activates MRLY 0x21014c together with SPFN/PCKP, activated only from there. No back connection to SPFN/PCKP (pattern of the SpecialFunction locations: the MRLY starts a setup relay on load), not verified live',
         "other_bytes": (),
     },
     43: {
@@ -589,8 +589,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 4,
         "relay_id": 0x0021036B,
         "savw_object": ('PCKP', 0x10210778, 73),
-        "status": 'wahrscheinlich',
-        "reason": 'Vorgänger des Auslösers (Stufe 3) 0x10210181 aktiviert MRLY 0x21036b zugleich mit SPFN/PCKP, nur von dort aktiviert. Keine Rückverbindung auf SPFN/PCKP (Muster der SpecialFunction-Orte: das MRLY startet beim Laden ein Aufbau-Relay), nicht live geprüft',
+        "status": 'probable',
+        "reason": 'Predecessor of the trigger (level 3) 0x10210181 activates MRLY 0x21036b together with SPFN/PCKP, activated only from there. No back connection to SPFN/PCKP (pattern of the SpecialFunction locations: the MRLY starts a setup relay on load), not verified live',
         "other_bytes": (),
     },
     44: {
@@ -600,8 +600,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00220065,
         "savw_object": ('PCKP', 0x00220063, 28),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x220065 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x220065 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     45: {
@@ -611,8 +611,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x002300EB,
         "savw_object": ('PCKP', 0x002300C9, 29),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x2300eb (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x2300eb (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     46: {
@@ -622,8 +622,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0026007F,
         "savw_object": ('PCKP', 0x0026007C, 30),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x26007f (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x26007f (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     47: {
@@ -633,8 +633,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00270014,
         "savw_object": ('PCKP', 0x00270019, 31),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x270014 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x270014 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     48: {
@@ -644,8 +644,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00030081,
         "savw_object": ('PCKP', 0x00030083, 0),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x30081 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x30081 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     49: {
@@ -655,8 +655,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0003015C,
         "savw_object": ('PCKP', 0x0003015A, 14),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x3015c (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x3015c (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     50: {
@@ -666,8 +666,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00050014,
         "savw_object": ('PCKP', 0x00050073, 1),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x50014 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x50014 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     51: {
@@ -677,8 +677,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000203A6,
         "savw_object": ('PCKP', 0x000203A8, 7),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x203a6 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x203a6 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     52: {
@@ -688,8 +688,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 12,
         "relay_id": 0x3002036A,
         "savw_object": ('PCKP', 0x30020366, 1),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x3002036a (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x3002036a (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     53: {
@@ -699,8 +699,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0004008B,
         "savw_object": ('PCKP', 0x000401D8, 15),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x4008b (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x4008b (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     54: {
@@ -710,8 +710,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00050038,
         "savw_object": ('PCKP', 0x00050031, 16),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x50038 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x50038 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     55: {
@@ -721,8 +721,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000A00E2,
         "savw_object": ('PCKP', 0x000A00DE, 17),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xa00e2 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xa00e2 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     56: {
@@ -732,8 +732,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000B0245,
         "savw_object": ('PCKP', 0x000B0200, 18),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xb0245 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xb0245 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     57: {
@@ -743,8 +743,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000C019F,
         "savw_object": ('PCKP', 0x000C019B, 19),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xc019f (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xc019f (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     58: {
@@ -754,8 +754,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0014014A,
         "savw_object": ('PCKP', 0x00140153, 21),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x14014a (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x14014a (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     59: {
@@ -765,8 +765,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x001600EA,
         "savw_object": ('PCKP', 0x001600E9, 22),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x1600ea (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x1600ea (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     60: {
@@ -776,8 +776,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00170044,
         "savw_object": ('PCKP', 0x00170043, 28),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x170044 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x170044 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     61: {
@@ -787,8 +787,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x001700C3,
         "savw_object": ('PCKP', 0x00170444, 27),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x1700c3 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x1700c3 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     62: {
@@ -798,8 +798,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00180045,
         "savw_object": ('PCKP', 0x001802E5, 80),
-        "status": 'wahrscheinlich',
-        "reason": 'Auslöser 0x180047 aktiviert MRLY 0x180045 zugleich mit SPFN/PCKP, nur von dort aktiviert. Keine Rückverbindung auf SPFN/PCKP (Muster der SpecialFunction-Orte: das MRLY startet beim Laden ein Aufbau-Relay), nicht live geprüft',
+        "status": 'probable',
+        "reason": 'Trigger 0x180047 activates MRLY 0x180045 together with SPFN/PCKP, activated only from there. No back connection to SPFN/PCKP (pattern of the SpecialFunction locations: the MRLY starts a setup relay on load), not verified live',
         "other_bytes": (),
     },
     63: {
@@ -809,8 +809,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 2,
         "relay_id": 0x08180087,
         "savw_object": ('PCKP', 0x08180084, 33),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x8180087 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x8180087 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     64: {
@@ -820,8 +820,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00190183,
         "savw_object": ('PCKP', 0x00190182, 34),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x190183 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x190183 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (231,),
     },
     65: {
@@ -831,8 +831,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0019008A,
         "savw_object": ('PCKP', 0x0019008F, 35),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x19008a (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x19008a (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     66: {
@@ -842,8 +842,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x002003CA,
         "savw_object": ('PCKP', 0x002003D2, 36),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x2003ca (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x2003ca (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     67: {
@@ -853,8 +853,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00040523,
         "savw_object": ('PCKP', 0x00040521, 0),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x40523 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x40523 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     68: {
@@ -864,8 +864,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000D0080,
         "savw_object": ('PCKP', 0x000D0081, 5),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xd0080 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xd0080 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     69: {
@@ -875,8 +875,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x001000D4,
         "savw_object": ('PCKP', 0x001000D6, 6),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x1000d4 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x1000d4 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     70: {
@@ -886,8 +886,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0010019C,
         "savw_object": ('PCKP', 0x00100426, 45),
-        "status": 'wahrscheinlich',
-        "reason": 'Auslöser 0x100195 aktiviert MRLY 0x10019c zugleich mit SPFN/PCKP, nur von dort aktiviert. Keine Rückverbindung auf SPFN/PCKP (Muster der SpecialFunction-Orte: das MRLY startet beim Laden ein Aufbau-Relay), nicht live geprüft',
+        "status": 'probable',
+        "reason": 'Trigger 0x100195 activates MRLY 0x10019c together with SPFN/PCKP, activated only from there. No back connection to SPFN/PCKP (pattern of the SpecialFunction locations: the MRLY starts a setup relay on load), not verified live',
         "other_bytes": (),
     },
     71: {
@@ -897,8 +897,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00110094,
         "savw_object": ('PCKP', 0x0011009A, 7),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x110094 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x110094 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     72: {
@@ -908,8 +908,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00160054,
         "savw_object": ('PCKP', 0x00160062, 16),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x160054 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x160054 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     73: {
@@ -919,8 +919,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x001C00EA,
         "savw_object": ('PCKP', 0x001C01DE, 52),
-        "status": 'wahrscheinlich',
-        "reason": 'Vorgänger des Auslösers (Stufe 2) 0x1c00ec aktiviert MRLY 0x1c00ea zugleich mit SPFN/PCKP, nur von dort aktiviert. Keine Rückverbindung auf SPFN/PCKP (Muster der SpecialFunction-Orte: das MRLY startet beim Laden ein Aufbau-Relay), nicht live geprüft',
+        "status": 'probable',
+        "reason": 'Predecessor of the trigger (level 2) 0x1c00ec activates MRLY 0x1c00ea together with SPFN/PCKP, activated only from there. No back connection to SPFN/PCKP (pattern of the SpecialFunction locations: the MRLY starts a setup relay on load), not verified live',
         "other_bytes": (),
     },
     74: {
@@ -930,8 +930,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x001D000B,
         "savw_object": ('PCKP', 0x001D0010, 22),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x1d000b (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x1d000b (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     75: {
@@ -941,8 +941,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0004046B,
         "savw_object": ('PCKP', 0x00040469, 4),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x4046b (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x4046b (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     76: {
@@ -952,8 +952,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 4,
         "relay_id": 0x000401D9,
         "savw_object": ('PCKP', 0x100401D7, 2),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x401d9 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x401d9 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     77: {
@@ -963,8 +963,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000501F8,
         "savw_object": ('PCKP', 0x000501F9, 46),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x501f8 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x501f8 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (220,),
     },
     78: {
@@ -974,8 +974,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00060194,
         "savw_object": ('PCKP', 0x00060195, 8),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x60194 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x60194 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     79: {
@@ -985,8 +985,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0007012B,
         "savw_object": ('PCKP', 0x0007003A, 72),
-        "status": 'wahrscheinlich',
-        "reason": 'Auslöser 0x70170 aktiviert 2 MRLY nur von dort, zugleich mit SPFN/PCKP; gewählt MRLY 0x7012b (Lade-Muster ACTV->ACTN an SRLY); die anderen (Byte 176) werden im selben Moment gesetzt. Keine Rückverbindung auf SPFN/PCKP (Muster der SpecialFunction-Orte: das MRLY startet beim Laden ein Aufbau-Relay), nicht live geprüft',
+        "status": 'probable',
+        "reason": 'Trigger 0x70170 activates 2 MRLY only from there, together with SPFN/PCKP; chosen MRLY 0x7012b (load pattern ACTV->ACTN to SRLY); the others (byte 176) are set at the same moment. No back connection to SPFN/PCKP (pattern of the SpecialFunction locations: the MRLY starts a setup relay on load), not verified live',
         "other_bytes": (176,),
     },
     80: {
@@ -996,8 +996,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 9,
         "relay_id": 0x24070090,
         "savw_object": ('PCKP', 0x2407008D, 14),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x24070090 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x24070090 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     81: {
@@ -1007,8 +1007,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00090047,
         "savw_object": ('PCKP', 0x0009004C, 15),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x90047 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x90047 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     82: {
@@ -1018,8 +1018,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000D0009,
         "savw_object": ('PCKP', 0x000D0005, 18),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xd0009 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xd0009 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     83: {
@@ -1029,8 +1029,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000E00D9,
         "savw_object": ('PCKP', 0x000E0106, 47),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xe00d9 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xe00d9 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     84: {
@@ -1040,8 +1040,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000F0052,
         "savw_object": ('PCKP', 0x000F004B, 35),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xf0052 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xf0052 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     85: {
@@ -1051,8 +1051,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000F00D9,
         "savw_object": ('PCKP', 0x000F00D8, 36),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xf00d9 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xf00d9 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     86: {
@@ -1062,8 +1062,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00030052,
         "savw_object": ('PCKP', 0x00030096, 0),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x30052 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x30052 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     87: {
@@ -1073,8 +1073,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000402AD,
         "savw_object": ('PCKP', 0x000402AB, 1),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x402ad (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x402ad (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (5, 187),
     },
     88: {
@@ -1084,8 +1084,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0005025D,
         "savw_object": ('PCKP', 0x0005025B, 2),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x5025d (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x5025d (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     89: {
@@ -1095,8 +1095,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0005029D,
         "savw_object": ('PCKP', 0x0005034A, 30),
-        "status": 'wahrscheinlich',
-        "reason": 'Auslöser 0x5028e aktiviert MRLY 0x5029d zugleich mit SPFN/PCKP, nur von dort aktiviert. Keine Rückverbindung auf SPFN/PCKP (Muster der SpecialFunction-Orte: das MRLY startet beim Laden ein Aufbau-Relay), nicht live geprüft',
+        "status": 'probable',
+        "reason": 'Trigger 0x5028e activates MRLY 0x5029d together with SPFN/PCKP, activated only from there. No back connection to SPFN/PCKP (pattern of the SpecialFunction locations: the MRLY starts a setup relay on load), not verified live',
         "other_bytes": (),
     },
     90: {
@@ -1106,8 +1106,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 17,
         "relay_id": 0x4406053D,
         "savw_object": ('PCKP', 0x4406053C, 23),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x4406053d (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x4406053d (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     91: {
@@ -1117,8 +1117,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x001000AD,
         "savw_object": ('PCKP', 0x001000A8, 5),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x1000ad (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x1000ad (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     92: {
@@ -1128,8 +1128,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x00140048,
         "savw_object": ('PCKP', 0x00140047, 20),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x140048 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x140048 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     93: {
@@ -1139,8 +1139,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0003002E,
         "savw_object": ('PCKP', 0x000300F4, 33),
-        "status": 'wahrscheinlich',
-        "reason": 'Auslöser 0x3014a aktiviert MRLY 0x3002e zugleich mit SPFN/PCKP, nur von dort aktiviert. Keine Rückverbindung auf SPFN/PCKP (Muster der SpecialFunction-Orte: das MRLY startet beim Laden ein Aufbau-Relay), nicht live geprüft',
+        "status": 'probable',
+        "reason": 'Trigger 0x3014a activates MRLY 0x3002e together with SPFN/PCKP, activated only from there. No back connection to SPFN/PCKP (pattern of the SpecialFunction locations: the MRLY starts a setup relay on load), not verified live',
         "other_bytes": (),
     },
     94: {
@@ -1150,8 +1150,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x0003015D,
         "savw_object": ('PCKP', 0x00030157, 0),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x3015d (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x3015d (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     95: {
@@ -1161,8 +1161,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000902A2,
         "savw_object": ('PCKP', 0x0009029F, 4),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x902a2 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x902a2 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (108,),
     },
     96: {
@@ -1172,8 +1172,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 0,
         "relay_id": 0x000B0053,
         "savw_object": ('PCKP', 0x000B0057, 19),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0xb0053 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0xb0053 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     97: {
@@ -1183,8 +1183,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 6,
         "relay_id": 0x1804007F,
         "savw_object": ('PCKP', 0x18040083, 0),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x1804007f (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x1804007f (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     98: {
@@ -1194,8 +1194,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 6,
         "relay_id": 0x1804014F,
         "savw_object": ('PCKP', 0x1804014D, 3),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x1804014f (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x1804014f (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
     99: {
@@ -1205,8 +1205,8 @@ LOCATION_DETAILS: dict[int, dict[str, object]] = {
         "layer": 4,
         "relay_id": 0x100400A2,
         "savw_object": ('PCKP', 0x100400A7, 1),
-        "status": 'sicher',
-        "reason": 'PCKP aktiviert MRLY 0x100400a2 (Tiefe 2), MRLY schaltet beim Laden den PCKP ab (DCTV)',
+        "status": 'certain',
+        "reason": 'PCKP activates MRLY 0x100400a2 (depth 2), MRLY switches the PCKP off on load (DCTV)',
         "other_bytes": (),
     },
 }

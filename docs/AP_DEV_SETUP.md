@@ -1,46 +1,46 @@
-# AP-Dev-Setup: Corruptovania unter Windows (T01)
+# AP dev setup: Corruptovania on Windows (T01)
 
-Stand: 2026-11-23. Getestet auf Windows 11 Home (x64) mit Git Bash und PowerShell 5.1.
-Ziel: In ca. 15 Minuten von einem leeren Rechner zu einem exportierten, bootfähigen MP3-ISO.
+As of 2026-11-23. Tested on Windows 11 Home (x64) with Git Bash and PowerShell 5.1.
+Goal: in about 15 minutes from an empty machine to an exported, bootable MP3 ISO.
 
-> **Wichtigstes Ergebnis vorab:** Getestet wurde mit einem **PAL**-ISO (`RM3P01`), weil nur dieses
-> vorlag. Mit den Standard-Optionen (Starter-Preset) funktioniert der Export für PAL und das ISO
-> bootet bis Olympus. Die optionalen Patches „MP3Update“ und „Disable Deflicker“ funktionieren
-> **nur mit NTSC-U (`RM3E01`)** und scheitern auf PAL (Details in Abschnitt 8).
+> **Most important result up front:** testing was done with a **PAL** ISO (`RM3P01`), because only this one
+> was available. With the default options (starter preset) the export works for PAL and the ISO
+> boots up to Olympus. The optional patches "MP3Update" and "Disable Deflicker" work
+> **only with NTSC-U (`RM3E01`)** and fail on PAL (details in section 8).
 
-Inhalt:
+Contents:
 
-1. Voraussetzungen
-2. Python-venv und Requirements
-3. .NET-8-SDK und Patcher `MP3Randomizer` bauen
-4. Seed generieren
-5. ISO exportieren
-6. Boot-Test in Dolphin
-7. Unterstützte Spielversion (mit Belegen im Code)
-8. Gescheiterte Schritte und Fehlermeldungen
-9. Stolpersteine und Hinweise für die nächsten Tasks
+1. Requirements
+2. Python venv and requirements
+3. .NET 8 SDK and building the patcher `MP3Randomizer`
+4. Generating a seed
+5. Exporting the ISO
+6. Boot test in Dolphin
+7. Supported game version (with evidence in the code)
+8. Failed steps and error messages
+9. Pitfalls and notes for the next tasks
 
-Konventionen:
+Conventions:
 
-- `REPO` = Repo-Wurzel `corruptovania` (z. B. `C:\Projekte\corruptovania`).
-- Das Original-ISO und alle Ausgaben liegen **außerhalb** des Repos (`..\mp3.iso`, `..\out\`).
-  **Lege nie ein ISO im Repo ab.**
-- Alle Build-Artefakte gehen nach `build/`, das per `.gitignore` (Zeile 8) ignoriert wird.
-- Befehle sind für Git Bash geschrieben. Wenn es ein PowerShell-Äquivalent braucht, steht es dabei.
+- `REPO` = repo root `corruptovania` (e.g. `C:\Projekte\corruptovania`).
+- The original ISO and all outputs are **outside** the repo (`..\mp3.iso`, `..\out\`).
+  **Never put an ISO into the repo.**
+- All build artifacts go to `build/`, which is ignored via `.gitignore` (line 8).
+- Commands are written for Git Bash. Where a PowerShell equivalent is needed, it is given alongside.
 
 ---
 
-## 1. Voraussetzungen
+## 1. Requirements
 
-| Werkzeug | Version (getestet) | Installation |
+| Tool | Version (tested) | Installation |
 |---|---|---|
 | Git | 2.56.0.windows.4 | https://git-scm.com |
-| Python | 3.12.10, 64-bit (`py -3.12`) | python.org-Installer, Haken bei „py launcher“ setzen |
+| Python | 3.12.10, 64-bit (`py -3.12`) | python.org installer, tick "py launcher" |
 | .NET SDK | 8.0.428 | `winget install --id Microsoft.DotNet.SDK.8 -e` |
-| Dolphin | 2609b (portable) | https://dolphin-emu.org/download/ (das winget-Paket `DolphinEmulator.Dolphin` ist veraltet, Version 5.0 von 2016) |
-| Original-ISO | Metroid Prime 3: Corruption, Wii-Standalone | eigener Dump (siehe Abschnitt 7) |
+| Dolphin | 2609b (portable) | https://dolphin-emu.org/download/ (the winget package `DolphinEmulator.Dolphin` is outdated, version 5.0 from 2016) |
+| Original ISO | Metroid Prime 3: Corruption, Wii standalone | your own dump (see section 7) |
 
-Prüfen:
+Check:
 
 ```bash
 py -0p
@@ -56,11 +56,11 @@ py -0p
 8.0.428 [C:\Program Files\dotnet\sdk]
 ```
 
-> Falls `dotnet --list-sdks` leer ist („No SDKs were found“): Es ist nur die Runtime installiert.
-> Dann das SDK installieren (Befehl in der Tabelle oben). Vorher war dieser Rechner genau in diesem Zustand
-> (nur Runtimes 8.0.23 und 10.0.14).
+> If `dotnet --list-sdks` is empty ("No SDKs were found"): only the runtime is installed.
+> Then install the SDK (command in the table above). Before, this machine was in exactly this state
+> (only runtimes 8.0.23 and 10.0.14).
 
-Ausgabe der winget-Installation:
+Output of the winget installation:
 ```
 Downloading https://download.microsoft.com/download/.../dotnet-sdk-8.0.428-win-x64.exe
 Successfully verified installer hash
@@ -68,13 +68,13 @@ Starting package install...
 Successfully installed
 ```
 
-In der aktuellen Git-Bash-Sitzung ist `dotnet` danach oft noch nicht im `PATH`. Entweder ein neues Terminal öffnen oder:
+In the current Git Bash session `dotnet` is often not in `PATH` yet afterwards. Either open a new terminal or:
 
 ```bash
 export PATH="/c/Program Files/dotnet:$PATH"
 ```
 
-## 2. Python-venv und Requirements
+## 2. Python venv and requirements
 
 ```bash
 cd REPO
@@ -97,18 +97,18 @@ venv/Scripts/python.exe -m pip install --upgrade -r requirements-setuptools.txt
 venv/Scripts/python.exe -m pip install -e ".[gui]" -c requirements.txt
 venv/Scripts/python.exe -m pip install -r requirements.txt
 ```
-Ausgabe (gekürzt, Ende des 2. Befehls):
+Output (shortened, end of the 2nd command):
 ```
 Successfully installed PySide6-Essentials-6.8.2.1 ... dolphin-memory-engine-1.3.0 ... nod-1.9.4 ... randovania-1.9.0.dev87 ...
 ```
 
-**Wichtig:** Der dritte Befehl (`requirements.txt`) ist Pflicht. Erst damit wird z. B.
-`open-prime-rando==0.15.1` installiert, das der Dolphin-Connector für MP3 braucht. Ohne ihn:
+**Important:** the third command (`requirements.txt`) is mandatory. Only it installs e.g.
+`open-prime-rando==0.15.1`, which the Dolphin connector needs for MP3. Without it:
 ```
 ModuleNotFoundError: No module named 'open_prime_rando'
 ```
 
-Kontrolle:
+Check:
 ```bash
 venv/Scripts/python.exe -m randovania --version
 ```
@@ -116,17 +116,17 @@ venv/Scripts/python.exe -m randovania --version
 Randovania 1.9.0.dev87 from ...\corruptovania\randovania
 ```
 
-Hinweis: `tools/prepare_virtual_env.bat` macht im Wesentlichen dasselbe, ruft aber zusätzlich
-`pre-commit install` auf (schreibt Git-Hooks). Für T01 wurde das bewusst weggelassen.
+Note: `tools/prepare_virtual_env.bat` does essentially the same, but additionally calls
+`pre-commit install` (writes Git hooks). For T01 this was left out on purpose.
 
-## 3. .NET-8-SDK und Patcher `MP3Randomizer` bauen
+## 3. .NET 8 SDK and building the patcher `MP3Randomizer`
 
-Der Patcher-Quellcode liegt in `tools/prime3_patcher/MP3Randomizer` (`net8.0`, siehe `MP3Randomizer.csproj`).
+The patcher source code is in `tools/prime3_patcher/MP3Randomizer` (`net8.0`, see `MP3Randomizer.csproj`).
 
-**Der Patcher muss als x86 (32-bit) gebaut werden.** Die mitgelieferte native Bibliothek
-`randovania/data/gollop_mp3_patcher/lzokay/lzokay.dll` ist 32-bit (PE-Machine `0x14c`), genau wie die
-mitgelieferte `MP3Randomizer.exe`. Ein x64-Build stürzt beim ersten komprimierten Bereich ab (Abschnitt 8, F2).
-Auf dem Rechner ist keine x86-.NET-Runtime installiert, deshalb wird der Patcher self-contained veröffentlicht.
+**The patcher must be built as x86 (32-bit).** The bundled native library
+`randovania/data/gollop_mp3_patcher/lzokay/lzokay.dll` is 32-bit (PE machine `0x14c`), just like the
+bundled `MP3Randomizer.exe`. An x64 build crashes at the first compressed area (section 8, F2).
+No x86 .NET runtime is installed on the machine, so the patcher is published self-contained.
 
 ```bash
 cd REPO
@@ -143,10 +143,10 @@ cp randovania/data/gollop_mp3_patcher/lzokay/lzokay.dll build/mp3r/publish/lzoka
   MP3Randomizer -> ...\build\mp3r\publish\
 ```
 
-`--artifacts-path` sorgt dafür, dass `bin/` und `obj/` unter `build/` landen und nicht als ungetrackte
-Ordner in `tools/prime3_patcher/MP3Randomizer/` (dort greift kein `.gitignore`).
+`--artifacts-path` makes `bin/` and `obj/` end up under `build/` and not as untracked
+folders in `tools/prime3_patcher/MP3Randomizer/` (no `.gitignore` applies there).
 
-Unit-Tests des Patchers:
+Unit tests of the patcher:
 ```bash
 dotnet test tools/prime3_patcher/MP3Randomizer.Tests/MP3Randomizer.Tests.csproj --artifacts-path build/mp3r-tests
 ```
@@ -154,7 +154,7 @@ dotnet test tools/prime3_patcher/MP3Randomizer.Tests/MP3Randomizer.Tests.csproj 
 Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 2 ms - MP3Randomizer.Tests.dll (net8.0)
 ```
 
-Kurztest:
+Quick test:
 ```bash
 build/mp3r/publish/MP3Randomizer.exe --help
 ```
@@ -169,24 +169,24 @@ REQUIRED FLAGS
 ...
 ```
 
-### Welcher Patcher wird beim Export benutzt?
+### Which patcher is used for the export?
 
-Der Exporter ruft unter Windows **nicht** den selbst gebauten Patcher auf, sondern die eingecheckte
+On Windows the exporter does **not** call the self-built patcher, but the checked-in
 `randovania/data/gollop_mp3_patcher/MP3Randomizer.exe`
-(`randovania/games/prime3/exporter/toolchain.py:82-94`, Pfad in Zeile 86).
+(`randovania/games/prime3/exporter/toolchain.py:82-94`, path in line 86).
 
-Gleichwertigkeit geprüft: Beide Patcher wurden mit demselben Seed und denselben Flags auf die 13 Eingabedateien
-des PAL-ISOs angewendet. Ergebnis: **alle 13 Ausgabedateien sind byte-identisch (SHA-256)**:
+Equivalence checked: both patchers were applied with the same seed and the same flags to the 13 input files
+of the PAL ISO. Result: **all 13 output files are byte-identical (SHA-256)**:
 FrontEnd, Logbook, Metroid1/3/4/5/6/7/8, MiscData, UniverseArea, Worlds, Standard.ntwk.
-Logbook.pak und MiscData.pak bleiben dabei unverändert.
+Logbook.pak and MiscData.pak stay unchanged in the process.
 
-Wer für T05 den eigenen Build im Exporter nutzen will, muss `MP3Randomizer.exe` plus Laufzeit-Dateien nach
-`randovania/data/gollop_mp3_patcher/` legen. Das ist eine Änderung an eingecheckten Dateien und gehört in einen
-eigenen Task.
+Anyone who wants to use their own build in the exporter for T05 has to put `MP3Randomizer.exe` plus runtime files into
+`randovania/data/gollop_mp3_patcher/`. That is a change to checked-in files and belongs in a
+task of its own.
 
-## 4. Seed generieren
+## 4. Generating a seed
 
-Für MP3 gibt es genau ein Preset: `randovania/games/prime3/presets/starter_preset.rdvpreset` („Starter Preset“).
+There is exactly one preset for MP3: `randovania/games/prime3/presets/starter_preset.rdvpreset` ("Starter Preset").
 
 ```bash
 cd REPO
@@ -199,12 +199,12 @@ Permalink: DQUaavDSCSsKDyO7HiYpa-sH
 Took 6.873 seconds. Hash: IVG2J7OR
 ```
 
-Patch-Daten (die JSON, die der Exporter an den Patcher übergibt) ausgeben:
+Output the patch data (the JSON the exporter passes to the patcher):
 ```bash
 venv/Scripts/python.exe -m randovania layout patcher-data \
   --layout-file build/seed/t01.rdvgame --output build/seed/t01.patcher.json
 ```
-Inhalt (gekürzt):
+Content (shortened):
 ```
 seed: 00kk44g44xtk944sdk444Cko{4rk^44}...
 starting_items: custom 0000000010010000000001100100100000000010000
@@ -214,9 +214,9 @@ missile_required_mains: True, ship_missile_required_mains: True
 phaaze_skip: False, mp3_update: False, disable_deflicker: False
 ```
 
-Im Starter-Preset sind `mp3_update` und `disable_deflicker` aus. Deshalb funktioniert es auch mit PAL.
+In the starter preset `mp3_update` and `disable_deflicker` are off. That is why it also works with PAL.
 
-## 5. ISO exportieren
+## 5. Exporting the ISO
 
 ```bash
 cd REPO
@@ -235,10 +235,10 @@ venv/Scripts/python.exe -m randovania layout export-game \
 
 real	0m54.902s
 ```
-Ergebnis: `..\out\t01_IVG2J7OR.iso`, 4 519 067 648 Bytes. Der Exporter legt temporäre Ordner unter `%TEMP%` an
-und räumt sie selbst wieder auf (geprüft). Freier Platz: etwa 3 × ISO-Größe, also rund 15 GB.
+Result: `..\out\t01_IVG2J7OR.iso`, 4 519 067 648 bytes. The exporter creates temporary folders under `%TEMP%`
+and cleans them up itself (checked). Free space: about 3 × ISO size, i.e. roughly 15 GB.
 
-Kontrolle mit DolphinTool (siehe Abschnitt 6 für Dolphin):
+Check with DolphinTool (see section 6 for Dolphin):
 ```bash
 DolphinTool.exe header -i "..\out\t01_IVG2J7OR.iso"
 ```
@@ -251,14 +251,14 @@ Region: PAL
 Country: Europe
 ```
 
-Hinweis: Das CLI-Flag `--mp3-update` von `export-game prime3` hat keine Wirkung. Es landet in
-`CorruptionGameExportParams.mp3_update` (`game_exporter.py:29`), der Exporter liest aber
-`patch_data["mp3_update"]` (`game_exporter.py:100`). Das kommt aus dem Preset
+Note: the CLI flag `--mp3-update` of `export-game prime3` has no effect. It ends up in
+`CorruptionGameExportParams.mp3_update` (`game_exporter.py:29`), but the exporter reads
+`patch_data["mp3_update"]` (`game_exporter.py:100`). That comes from the preset
 (`corruption_configuration.py:17`, `patch_data_factory.py:50,118`).
 
-## 6. Boot-Test in Dolphin
+## 6. Boot test in Dolphin
 
-Dolphin portabel neben das Repo legen (nicht ins Repo):
+Put a portable Dolphin next to the repo (not into the repo):
 
 ```bash
 cd "REPO/.."
@@ -268,9 +268,9 @@ curl -sSL -o tools/dl/dolphin-2609b-x64.7z https://dl.dolphin-emu.org/releases/2
 touch tools/dolphin/Dolphin-x64/portable.txt
 ```
 
-Steuerung per Tastatur und Maus. Diese Datei als `tools/dolphin/Dolphin-x64/User/Config/WiimoteNew.ini` anlegen.
-MP3 verlangt einen Nunchuk, und der Zeiger muss an der Maus hängen. Wenn man den Zeiger auf Tasten legt,
-springt er beim Loslassen in die Mitte zurück, und Menüs lassen sich so nicht bedienen.
+Control via keyboard and mouse. Create this file as `tools/dolphin/Dolphin-x64/User/Config/WiimoteNew.ini`.
+MP3 requires a Nunchuk, and the pointer must be bound to the mouse. If the pointer is bound to keys,
+it jumps back to the centre when released, and menus cannot be operated that way.
 
 ```ini
 [Wiimote1]
@@ -309,7 +309,7 @@ Source = 0
 Source = 0
 ```
 
-Optional `User/Config/Dolphin.ini` (Analytics-Abfrage aus, Spiel im Hauptfenster):
+Optional `User/Config/Dolphin.ini` (analytics prompt off, game in the main window):
 ```ini
 [Analytics]
 PermissionAsked = True
@@ -320,99 +320,99 @@ ConfirmStop = False
 RenderToMain = True
 ```
 
-Starten:
+Start:
 ```bash
 tools/dolphin/Dolphin-x64/Dolphin.exe -b -e "C:\...\MP3 Archi\out\t01_IVG2J7OR.iso"
 ```
 
-Ablauf und Beobachtung (2026-11-23, Dolphin 2609b, JIT64, Direct3D 11, HLE):
+Sequence and observation (2026-11-23, Dolphin 2609b, JIT64, Direct3D 11, HLE):
 
-1. Fenstertitel: `Metroid Prime 3: Corruption (RM3P01)`. Das Nintendo/Retro-Intro läuft, mit A (`F`) überspringen.
-2. Titelbildschirm „PRESS (A) TO START“ → A.
-3. „Game Select“: Zeiger mit der Maus auf `[ New Game ]` → A, dann Mii wählen → A, dann `Game Start` → A.
-4. „Main Menu“ → `[ Play Game ]` → A. „Select Difficulty“ → `[ Normal ]` → A.
-5. Lebenserhaltungs-Text im Cryo-Schlaf, danach Spielbeginn auf der **G.F.S. Olympus**.
-   Das HUD ist sichtbar (Energie 99, „Objective Completed“).
-6. Mit `W` (Nunchuk-Stick) läuft Samus vorwärts. **Das Level ist spielbar.**
+1. Window title: `Metroid Prime 3: Corruption (RM3P01)`. The Nintendo/Retro intro plays, skip with A (`F`).
+2. Title screen "PRESS (A) TO START" → A.
+3. "Game Select": pointer with the mouse on `[ New Game ]` → A, then choose a Mii → A, then `Game Start` → A.
+4. "Main Menu" → `[ Play Game ]` → A. "Select Difficulty" → `[ Normal ]` → A.
+5. Life support text in cryo sleep, then the game starts on the **G.F.S. Olympus**.
+   The HUD is visible (energy 99, "Objective Completed").
+6. With `W` (Nunchuk stick) Samus walks forward. **The level is playable.**
 
-Beweis-Screenshot: `..\out\t01_boot_olympus.jpg` (außerhalb des Repos).
+Proof screenshot: `..\out\t01_boot_olympus.jpg` (outside the repo).
 
-Tipp: Tasten mindestens ca. 0,3 s halten. Sehr kurze Tastendrücke erkennt das Spiel manchmal nicht.
+Tip: hold keys for at least about 0.3 s. The game sometimes does not detect very short key presses.
 
-## 7. Unterstützte Spielversion (mit Belegen im Code)
+## 7. Supported game version (with evidence in the code)
 
-### Kurzfassung
+### Summary
 
-| Version | Game-ID | Standard-Export (Starter-Preset) | Mit `MP3Update`/`disable_deflicker` | Dolphin-Connector |
+| Version | Game ID | Default export (starter preset) | With `MP3Update`/`disable_deflicker` | Dolphin connector |
 |---|---|---|---|---|
-| Wii-Standalone NTSC-U | **RM3E01** | erwartet ja (Ziel der Original-Skripte, hier nicht getestet: kein ISO vorhanden) | **ja**, die einzige Version, für die die hdiffs gebaut sind | ja („Wii NTSC“) |
-| Wii-Standalone PAL | **RM3P01** (Rev 0) | **ja, getestet**: Export ok, bootet bis Olympus, spielbar | **nein**, hpatchz bricht ab (Abschnitt 8, F3) | ja („Wii PAL“), Speicher-Adressen in T02 prüfen |
-| Wii-Standalone NTSC-J | RM3J01 | ungetestet | sicher nein (die hdiffs passen nur zu NTSC-U) | ja („Wii NTSC-J“) |
-| Metroid Prime Trilogy (R3ME01/R3MP01) | R3M* | **nicht unterstützt**: kein Code-Pfad, keine Referenz | nein | nein (keine Trilogy-DOL-Version) |
+| Wii standalone NTSC-U | **RM3E01** | expected yes (target of the original scripts, not tested here: no ISO available) | **yes**, the only version the hdiffs are built for | yes ("Wii NTSC") |
+| Wii standalone PAL | **RM3P01** (Rev 0) | **yes, tested**: export ok, boots up to Olympus, playable | **no**, hpatchz aborts (section 8, F3) | yes ("Wii PAL"), check memory addresses in T02 |
+| Wii standalone NTSC-J | RM3J01 | untested | certainly not (the hdiffs only fit NTSC-U) | yes ("Wii NTSC-J") |
+| Metroid Prime Trilogy (R3ME01/R3MP01) | R3M* | **not supported**: no code path, no reference | no | no (no Trilogy DOL version) |
 
-**Für das MVP (E2):** Zielversion ist **Wii-Standalone NTSC-U `RM3E01`**. Nur damit stehen alle Patcher-Optionen
-zur Verfügung. PAL `RM3P01` funktioniert ohne MP3Update/Deflicker und ist für die Entwicklung brauchbar.
+**For the MVP (E2):** the target version is **Wii standalone NTSC-U `RM3E01`**. Only with it are all patcher options
+available. PAL `RM3P01` works without MP3Update/Deflicker and is usable for development.
 
-### Belege
+### Evidence
 
-1. **Es gibt keine aktive Prüfung von Game-ID oder Hash.** Weder der Exporter
-   (`randovania/games/prime3/exporter/game_exporter.py`, `toolchain.py`) noch der Patcher
-   (`tools/prime3_patcher/MP3Randomizer/MP3Randomizer/*.cs`) lesen die Game-ID oder prüfen einen ISO-Hash.
-   Die Suche nach `RM3`, `R3M`, `game_id`, `sha1`/`md5` über `randovania/games/prime3`, `tools/prime3_patcher` und
-   den Connector findet nichts dazu. Der Export-Dialog prüft nur, ob die Datei existiert und auf `.iso` endet
+1. **There is no active check of game ID or hash.** Neither the exporter
+   (`randovania/games/prime3/exporter/game_exporter.py`, `toolchain.py`) nor the patcher
+   (`tools/prime3_patcher/MP3Randomizer/MP3Randomizer/*.cs`) reads the game ID or checks an ISO hash.
+   Searching for `RM3`, `R3M`, `game_id`, `sha1`/`md5` across `randovania/games/prime3`, `tools/prime3_patcher` and
+   the connector finds nothing on this. The export dialog only checks whether the file exists and ends in `.iso`
    (`randovania/games/prime3/gui/dialog/game_export_dialog.py:73-77, 91-92`).
-   Der Patcher arbeitet fest mit Paket-Dateinamen und Asset-IDs
+   The patcher works with fixed package file names and asset IDs
    (`tools/prime3_patcher/MP3Randomizer/MP3Randomizer/MP3Randomizer.cs:51-66`).
-2. **NTSC-U ist die implizite Zielversion der Patcher-Daten:**
-   - `randovania/data/gollop_mp3_patcher/CreateWBFS.bat:1-2` schreibt fest
+2. **NTSC-U is the implicit target version of the patcher data:**
+   - `randovania/data/gollop_mp3_patcher/CreateWBFS.bat:1-2` hard-codes
      `Metroid Prime 3 - Corruption [RM3E01]/RM3E01.wbfs`.
-   - Die hdiff-Patches in `randovania/data/gollop_mp3_patcher/MP3Update/*.hdiff` speichern die erwartete
-     Größe der Originaldatei. Diese stimmt für alle 11 Dateien nicht mit PAL überein. Beispiel `main.dol`:
-     erwartet 6 045 952 Bytes, PAL hat 6 055 776 Bytes. Die Patches werden angewendet in
-     `game_exporter.py:89-98` (Deflicker → `main.hdiff`) und `game_exporter.py:100-122` (MP3Update → 10 Paks).
-3. **Der Dolphin-Connector kennt drei Wii-Standalone-DOLs, aber keine Trilogy-Version:**
-   `randovania/game_connection/builder/prime_connector_builder.py:40,64` lädt
+   - The hdiff patches in `randovania/data/gollop_mp3_patcher/MP3Update/*.hdiff` store the expected
+     size of the original file. For all 11 files it does not match PAL. Example `main.dol`:
+     expected 6 045 952 bytes, PAL has 6 055 776 bytes. The patches are applied in
+     `game_exporter.py:89-98` (Deflicker → `main.hdiff`) and `game_exporter.py:100-122` (MP3Update → 10 paks).
+3. **The Dolphin connector knows three Wii standalone DOLs, but no Trilogy version:**
+   `randovania/game_connection/builder/prime_connector_builder.py:40,64` loads
    `open_prime_rando.dol_patching.corruption.dol_versions.ALL_VERSIONS` (open-prime-rando 0.15.1, `dol_versions.py:9,33,50`):
-   - „Wii NTSC“: `!#$MetroidBuildInfo!#$2007/07/27 13:13 Build v3.436 (MP3)`
-   - „Wii PAL“: `!#$MetroidBuildInfo!#$2007/08/24 16:52 Build v3.453 (mp3)`
-   - „Wii NTSC-J“: `!#$MetroidBuildInfo!#$2007/11/12 14:15 Build v3.495 (jpn)`
-4. **Trilogy:** Im prime3-Code gibt es keinerlei Trilogy-Bezug. „Trilogy“ kommt nur bei den Teleportern von
-   Prime 1 und 2 vor. Die Paketnamen in `MP3Randomizer.cs:51-52` (`Metroid1.pak` … `Worlds.pak`) entsprechen dem
-   Standalone-Layout. Auf der Trilogy-Disc liegen die Spiele in Unterordnern je Spiel.
-5. **Texte:** Der Patcher ersetzt Strings nur auf Englisch
+   - "Wii NTSC": `!#$MetroidBuildInfo!#$2007/07/27 13:13 Build v3.436 (MP3)`
+   - "Wii PAL": `!#$MetroidBuildInfo!#$2007/08/24 16:52 Build v3.453 (mp3)`
+   - "Wii NTSC-J": `!#$MetroidBuildInfo!#$2007/11/12 14:15 Build v3.495 (jpn)`
+4. **Trilogy:** there is no Trilogy reference at all in the prime3 code. "Trilogy" only occurs for the teleporters of
+   Prime 1 and 2. The package names in `MP3Randomizer.cs:51-52` (`Metroid1.pak` … `Worlds.pak`) match the
+   standalone layout. On the Trilogy disc the games are in subfolders per game.
+5. **Texts:** the patcher replaces strings only in English
    (`tools/prime3_patcher/MP3Randomizer/MP3Randomizer/STRGModificationData.cs:10ff`, `Language.English`).
-   Bei PAL in einer anderen Systemsprache als Englisch sind Pickup-Texte daher vermutlich nicht oder gemischt
-   angepasst. Ungetestet.
+   For PAL with a system language other than English, pickup texts are therefore probably not adjusted, or mixed.
+   Untested.
 
-Verwendetes Test-ISO: `RM3P01`, Revision 0, MD5 `f4c734a1e191c45e9ac037d92e14485d` (laut `DolphinTool verify`),
-4 699 979 776 Bytes.
+Test ISO used: `RM3P01`, revision 0, MD5 `f4c734a1e191c45e9ac037d92e14485d` (according to `DolphinTool verify`),
+4 699 979 776 bytes.
 
-## 8. Gescheiterte Schritte und Fehlermeldungen
+## 8. Failed steps and error messages
 
-**F1: Patcher als x64 gebaut** (`dotnet publish -r win-x64 --self-contained false`). Der Build klappt,
-aber beim Ausführen kommt:
+**F1: patcher built as x64** (`dotnet publish -r win-x64 --self-contained false`). The build works,
+but running it gives:
 ```
 Unhandled exception. System.DllNotFoundException: Unable to load DLL 'lzokay' or one of its dependencies: The specified module could not be found. (0x8007007E)
    at MP3Randomizer.Compression.decompress(...)
    at MP3Randomizer.Compression.decompress_mrea_block(Byte[] compressed_b) in ...\Compression.cs:line 79
 ```
-Ohne `lzokay.dll` neben der EXE fehlt die Datei. Mit DLL scheitert es trotzdem, weil die DLL 32-bit ist.
-Suchpfade: `Compression.cs:33-39` (`<exe-dir>\lzokay.dll` oder `<exe-dir>\lzokay\lzokay.dll`).
-**Lösung:** `-r win-x86 --self-contained true` und die DLL nach `publish/lzokay/` kopieren (Abschnitt 3).
+Without `lzokay.dll` next to the EXE the file is missing. With the DLL it still fails, because the DLL is 32-bit.
+Search paths: `Compression.cs:33-39` (`<exe-dir>\lzokay.dll` or `<exe-dir>\lzokay\lzokay.dll`).
+**Solution:** `-r win-x86 --self-contained true` and copy the DLL to `publish/lzokay/` (section 3).
 
-**F2: `tools/prime3_patcher/compare_randomizer_outputs.py` kann so nicht laufen.**
+**F2: `tools/prime3_patcher/compare_randomizer_outputs.py` cannot run like this.**
 ```
 Unhandled Exception: System.IO.FileNotFoundException: Could not find file '...\old-output\Standard.ntwk'.
    at MP3Randomizer.NTWK.modify_ntwk(String orig_tweak_location, String dest_tweak_location)
 RuntimeError: Randomizer process failed with exit code 3762504530.
 ```
-Das Skript legt einen leeren Ausgabeordner an. Der Patcher erwartet aber, dass `Standard.ntwk` dort schon existiert,
-was im echten Export immer so ist (Ausgabe = extrahierter `DATA/files`). Außerdem übergibt das Skript
-`--starting-items` als ein einziges Argument, was für `custom <bits>` nicht passt.
-**Umgehung:** Beide Patcher von Hand mit vorbefüllten Ausgabeordnern laufen lassen und SHA-256 vergleichen
-(Ergebnis in Abschnitt 3: identisch).
+The script creates an empty output folder. The patcher however expects `Standard.ntwk` to exist there already,
+which is always the case in the real export (output = extracted `DATA/files`). In addition the script passes
+`--starting-items` as a single argument, which does not fit `custom <bits>`.
+**Workaround:** run both patchers by hand with pre-filled output folders and compare SHA-256
+(result in section 3: identical).
 
-**F3: Export mit `mp3_update = true` auf PAL.** Getestet mit einer Kopie der Patch-JSON, in der `mp3_update` auf `true` steht:
+**F3: export with `mp3_update = true` on PAL.** Tested with a copy of the patch JSON in which `mp3_update` is set to `true`:
 ```
 [ 10%] Extracting ISO...
 [ 20%] Removing attract videos...
@@ -421,9 +421,9 @@ RuntimeError: Prime 3 helper failed (hpatchz.exe, exit code 6): ('...\hpatchz.ex
 Helper output:
 input oldFile oldDataSize 27923392 != diffFile saved oldDataSize 27951744 ERROR!
 ```
-Einzeln geprüft, alle 11 hdiffs gegen PAL scheitern mit Exit-Code 6:
+Checked individually, all 11 hdiffs fail against PAL with exit code 6:
 
-| Datei | PAL-Größe | vom hdiff erwartet |
+| File | PAL size | expected by the hdiff |
 |---|---|---|
 | main.dol | 6 055 776 | 6 045 952 |
 | FrontEnd.pak | 27 923 392 | 27 951 744 |
@@ -437,23 +437,23 @@ Einzeln geprüft, alle 11 hdiffs gegen PAL scheitern mit Exit-Code 6:
 | Metroid7.pak | 158 443 456 | 157 911 168 |
 | UniverseArea.pak | 15 069 440 | 15 059 840 |
 
-Dasselbe gilt für `disable_deflicker` (`main.hdiff`). Hier wurde nur hpatchz direkt getestet, kein ganzer Export.
+The same applies to `disable_deflicker` (`main.hdiff`). Here only hpatchz was tested directly, not a whole export.
 
-**F4: `winget install DolphinEmu.Dolphin`** → `No package found matching input criteria.` Die richtige ID ist
-`DolphinEmulator.Dolphin`, aber das ist nur Version 5.0 (2016). Deshalb wird das portable Release 2609b verwendet.
+**F4: `winget install DolphinEmu.Dolphin`** → `No package found matching input criteria.` The correct ID is
+`DolphinEmulator.Dolphin`, but that is only version 5.0 (2016). That is why the portable release 2609b is used.
 
-**F5: Dolphin-Zeiger auf Tasten (I/J/K/L) gelegt.** Der Zeiger springt beim Loslassen in die Mitte zurück, und Menüpunkte
-lassen sich nicht auswählen. Lösung: Zeiger an die Maus binden (`Cursor X±/Y±`, Abschnitt 6).
+**F5: Dolphin pointer bound to keys (I/J/K/L).** The pointer jumps back to the centre when released, and menu items
+cannot be selected. Solution: bind the pointer to the mouse (`Cursor X±/Y±`, section 6).
 
-## 9. Stolpersteine und Hinweise für die nächsten Tasks
+## 9. Pitfalls and notes for the next tasks
 
-- **Option `--phaaze-skip`:** Die Hilfe des Patchers nennt `--skip-phaaze`
-  (`tools/prime3_patcher/MP3Randomizer/MP3Randomizer/Configuration.cs:162`). Der Parser akzeptiert aber nur
-  `--phaaze-skip`/`-phaaze-skip` (`Configuration.cs:85`), und das schickt der Exporter auch. Nur der Hilfetext ist falsch.
-- **Mitgelieferte EXE:** `randovania/data/gollop_mp3_patcher/MP3Randomizer.exe` ist ein 32-bit-.NET-Framework-Build
-  (das erkennt man am Stacktrace-Stil `System.IO.__Error.WinIOError`). Sie läuft ohne installierte .NET-8-Runtime.
-- **T02 (Speicher-Mapping):** Der Connector unterstützt PAL über die Build-Kennung. Ob die PAL-Adressen in
-  open-prime-rando stimmen, ist noch nicht geprüft. Das ist ein Kandidat für T02.
-- **T05 (Patch-Pfad):** Der Patcher bekommt den Seed nur als `--layout`-String (Permalink-Format von Gollop), nicht als
-  JSON (`game_exporter.py:224-255`). Für AP-Platzhalter-Items muss also entweder dieses Format oder der Patcher erweitert werden.
-- **Ein NTSC-U-ISO (`RM3E01`) wird gebraucht**, um MP3Update/Deflicker und die eigentliche MVP-Zielversion zu testen.
+- **Option `--phaaze-skip`:** the patcher's help names `--skip-phaaze`
+  (`tools/prime3_patcher/MP3Randomizer/MP3Randomizer/Configuration.cs:162`). The parser however only accepts
+  `--phaaze-skip`/`-phaaze-skip` (`Configuration.cs:85`), and that is also what the exporter sends. Only the help text is wrong.
+- **Bundled EXE:** `randovania/data/gollop_mp3_patcher/MP3Randomizer.exe` is a 32-bit .NET Framework build
+  (recognisable by the stack trace style `System.IO.__Error.WinIOError`). It runs without an installed .NET 8 runtime.
+- **T02 (memory mapping):** the connector supports PAL via the build identifier. Whether the PAL addresses in
+  open-prime-rando are right is not checked yet. That is a candidate for T02.
+- **T05 (patch path):** the patcher gets the seed only as a `--layout` string (Gollop's permalink format), not as
+  JSON (`game_exporter.py:224-255`). For AP placeholder items either this format or the patcher has to be extended.
+- **An NTSC-U ISO (`RM3E01`) is needed** to test MP3Update/Deflicker and the actual MVP target version.

@@ -235,13 +235,13 @@ Example (one line, wrapped here):
  "room": "Docking Hub Alpha", "item_percentage": [1, 2], "blocks": ["0x80A13AA0"],
  "bytes": [{"byte": 8, "value": 1, "time": "2026-11-24T19:25:43.010", "role": "location", "location": 4,
             "location_name": "Norion - Docking Hub Alpha - Pickup (Grapple Lasso)", "room": "Docking Hub Alpha",
-            "status": "sicher"},
+            "status": "certain"},
            {"byte": 118, "value": 1, "time": "…", "role": "unknown", "location": null, "location_name": null,
             "room": null, "status": null}],
  "warnings": ["byte 118 set, but not assigned to any location"]}
 ```
 
-(`status` is copied from `location_flags.py`: `sicher` = certain, `wahrscheinlich` = probable.)
+(`status` is copied from `location_flags.py`: `certain`, `probable` or `uncertain`.)
 
 | `kind` | Meaning |
 |---|---|

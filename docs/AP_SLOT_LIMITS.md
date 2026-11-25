@@ -1,214 +1,214 @@
-# Inventar-Slots: Bitbreite, Persistenz und Spielereignisse (T19, T15)
+# Inventory slots: bit width, persistence and game events (T19, T15)
 
-Stand: 2026-11-25. Nur PAL `RM3P01`, PrimeHack v1.0.9, **CPU Clock Override aus** (`OverclockEnable = False`), Disc Speed
-„schnell“ (`FastDiscSpeed = True`). Grundlage: SPEC E9/E11, `AP_LIVE_TESTS.md` (T10), `AP_LIVE_TESTS_T11.md` (T11).
-Inventar wie dort: `PS + 0x54 + slot*0xC`, je Slot `u32 Anzahl, u32 Kapazität`, `PS = [[0x80680234]+0x24]` (live `0x80995B20`).
+As of 2026-11-25. PAL `RM3P01` only, PrimeHack v1.0.9, **CPU Clock Override off** (`OverclockEnable = False`), Disc Speed
+"fast" (`FastDiscSpeed = True`). Basis: SPEC E9/E11, `AP_LIVE_TESTS.md` (T10), `AP_LIVE_TESTS_T11.md` (T11).
+Inventory as there: `PS + 0x54 + slot*0xC`, per slot `u32 amount, u32 capacity`, `PS = [[0x80680234]+0x24]` (live `0x80995B20`).
 
-> **Kurzfassung für T07**
-> 1. Die `main.dol` enthält ab `0x8057D5F8` eine Tabelle mit 70 Einträgen (Name, **Maximum**, **Flags**). Beim Speichern
->    behält jeder Slot von Anzahl **und** Kapazität getrennt nur die unteren `bits = bit_length(Maximum)` Bit, also
->    `Wert mod 2^bits`. **Es wird nicht geklemmt.** Gemessen an 54 Slots in zwei Durchgängen, alle 108 Werte passen (Abschnitt 3).
->    Das Maximum ist identisch mit `max_capacity` in Randovanias `header.json`.
-> 2. Slots ohne Flag-Bit 31 werden **gar nicht** gespeichert, nach dem Laden stehen sie auf 0/0: 18 Energy, 19, **47**,
+> **Summary for T07**
+> 1. `main.dol` contains a table with 70 entries (name, **maximum**, **flags**) from `0x8057D5F8`. On saving, every
+>    slot keeps only the lower `bits = bit_length(maximum)` bits of amount **and** capacity separately, i.e.
+>    `value mod 2^bits`. **Nothing is clamped.** Measured on 54 slots in two passes, all 108 values match (section 3).
+>    The maximum is identical to `max_capacity` in Randovania's `header.json`.
+> 2. Slots without flag bit 31 are **not saved at all**; after loading they are 0/0: 18 Energy, 19, **47**,
 >    48, 49, 50, **69**.
-> 3. Der T11-Befund „Suit 11 → 3“ ist **reproduziert und erklärt**: SuitType hat 3 Bit (Maximum 6), 7 bleibt erhalten,
->    8 wird 0.
-> 4. **Konflikte mit dem Pool:** Suit (Kapazität 6 + 5 = 11 > 7) und Energy Cells, falls T07 dort Kapazität addiert
->    (22: 9 + 9 = 18 > 15, 23–31: 1 + 1 = 2 → 0). Alle anderen Pool-Summen passen: Missile 245 ≤ 255, Energy Tank 14 ≤ 15,
->    Ship Missile 11 ≤ 15, Slot 68 240, ItemPercentage 199 ≤ 255.
-> 5. **Live-Freeze:** Suit-Anzahl 13 lässt das Spiel im selben Frame einfrieren. Die Anzahl in Slot 17 ist ein Index.
-> 6. **T15:** Eine Energy Cell einsetzen senkt die **Anzahl** von 22 und Fuse_i, die Kapazität bleibt. Hypermode und der Flug nach Norion
->    senken nichts. Ein Tod lädt den letzten Spielstand, damit sinkt alles auf den gespeicherten Stand.
+> 3. The T11 finding "Suit 11 → 3" is **reproduced and explained**: SuitType has 3 bits (maximum 6), 7 is kept,
+>    8 becomes 0.
+> 4. **Conflicts with the pool:** Suit (capacity 6 + 5 = 11 > 7) and Energy Cells, if T07 adds capacity there
+>    (22: 9 + 9 = 18 > 15, 23–31: 1 + 1 = 2 → 0). All other pool sums fit: Missile 245 ≤ 255, Energy Tank 14 ≤ 15,
+>    Ship Missile 11 ≤ 15, slot 68 240, ItemPercentage 199 ≤ 255.
+> 5. **Live freeze:** Suit amount 13 freezes the game in the same frame. The amount in slot 17 is an index.
+> 6. **T15:** Inserting an Energy Cell lowers the **amount** of 22 and Fuse_i, the capacity stays. Hypermode and the flight to Norion
+>    lower nothing. A death loads the last save, so everything drops to the saved state.
 
-## 1. Quelle der Bitbreite: Powerup-Tabelle in der DOL
+## 1. Source of the bit width: powerup table in the DOL
 
-PAL `main.dol`, Adresse `0x8057D5F8` (Dateioffset `0x5796D8`), 70 × 12 Byte: `u32` Zeiger auf den Namen, `u32` Maximum,
-`u32` Flags. Original-ISO (`pal_extract`) und T01-ISO (`pal_t01_extract`) sind hier byte-identisch. Reproduktion
-(Repo-Wurzel, venv):
+PAL `main.dol`, address `0x8057D5F8` (file offset `0x5796D8`), 70 × 12 bytes: `u32` pointer to the name, `u32` maximum,
+`u32` flags. Original ISO (`pal_extract`) and T01 ISO (`pal_t01_extract`) are byte-identical here. Reproduction
+(repo root, venv):
 
 ```powershell
 venv\Scripts\python.exe -I apworld\tools\live\slot_probe.py dol ..\pal_extract\DATA\sys\main.dol
 ```
 
-Das Skript vergleicht die DOL mit `SLOT_TABLE` in `apworld/tools/live/slot_probe.py` (Exit 1 bei Abweichung).
+The script compares the DOL with `SLOT_TABLE` in `apworld/tools/live/slot_probe.py` (exit 1 on a difference).
 
-Flags: **Bit 31 = wird gespeichert.** Das ist durch Messung belegt: Alle Slots mit Bit 31 hielten ihre Werte, und die
-geprüften Slots ohne Bit 31 (47, 69, laut T10 auch 48, 49) stehen nach dem Laden auf 0/0. Bit 30 ist bei 21, 40, 41, 51–61
-nicht gesetzt, bei den übrigen gespeicherten Slots schon. Seine Bedeutung ist **unbekannt**, auf die Speicherung hat es
-keinen Einfluss (21 und 53–61 wurden gemessen).
+Flags: **bit 31 = is saved.** This is backed by measurement: all slots with bit 31 kept their values, and the
+checked slots without bit 31 (47, 69, according to T10 also 48, 49) are 0/0 after loading. Bit 30 is not set for 21, 40, 41,
+51–61, and set for the other saved slots. Its meaning is **unknown**; it has no influence on saving (21 and 53–61 were
+measured).
 
-Namen in der DOL, die von `AP_MEMORY_MAP.md` abweichen bzw. dort fehlen: **43 = HyperModeCharge**, **47 = PhazonBall**,
-**52 = FusesUsed** (dort „EnergyCellsUsed“), **53–61 = Fuse1Used … Fuse9Used**.
+Names in the DOL that differ from `AP_MEMORY_MAP.md` or are missing there: **43 = HyperModeCharge**, **47 = PhazonBall**,
+**52 = FusesUsed** (there "EnergyCellsUsed"), **53–61 = Fuse1Used … Fuse9Used**.
 
-## 2. Ablauf der Messung
+## 2. Course of the measurement
 
-| Zeit (2026-11-25) | Schritt |
+| Time (2026-11-25) | Step |
 |---|---|
-| 01:41 | Spielstand gesichert (`out/t19/save_backup_before`, außerhalb des Repos) |
-| 01:45 | Neues Spiel (Rando-Start, G.F.S. Valhalla, Docking Bay 5, Schiff nutzbar), Ist-Stand `baseline` |
-| 01:45 | **Durchgang 1** (`pass1`) geschrieben: 54 Slots, Kapazität = `2^bits − 1`, Anzahl = Pool-Maximum. Speichern am Schiff, Reset, Continue |
-| 01:47 | **Durchgang 2** (`pass2`) geschrieben: Anzahl `2^bits + 1`, Kapazität `2^bits`, bei 1-Bit-Items 3/2, Suit 13/8. **PrimeHack fror sofort ein** (Speicher unverändert, noch vor dem Speichern). Der Spielstand von Durchgang 1 blieb erhalten |
-| 01:51 | Neustart, Durchgang-1-Stand geladen (identisch zu `loaded_pass1`). **Durchgang 2s** (`pass2s`, entschärft): Anzahl = Kapazität = `2^bits`, Suit 5/8, kritische Slots 0/11/12/15/32 auf 1/1. Lief, Speichern, Reset, Continue |
-| 01:53 | Freeze-Probe: nur Slot 17 auf 13/8 → **sofort eingefroren**. Neustart |
-| 01:54–01:58 | T15 (Abschnitt 5), Logger mit 0,1 s Takt über alle 70 Slots |
-| 02:00 | Ausgangsinventar zurückgeschrieben, am Schiff gespeichert, geprüft (`after_final_save`: nur Stat_DataSaves +1) |
+| 01:41 | Save backed up (`out/t19/save_backup_before`, outside the repo) |
+| 01:45 | New game (rando start, G.F.S. Valhalla, Docking Bay 5, ship usable), current state `baseline` |
+| 01:45 | **Pass 1** (`pass1`) written: 54 slots, capacity = `2^bits − 1`, amount = pool maximum. Saved at the ship, reset, Continue |
+| 01:47 | **Pass 2** (`pass2`) written: amount `2^bits + 1`, capacity `2^bits`, 3/2 for 1-bit items, Suit 13/8. **PrimeHack froze at once** (memory unchanged, still before saving). The save from pass 1 was kept |
+| 01:51 | Restart, pass 1 state loaded (identical to `loaded_pass1`). **Pass 2s** (`pass2s`, defused): amount = capacity = `2^bits`, Suit 5/8, critical slots 0/11/12/15/32 at 1/1. Ran, saved, reset, Continue |
+| 01:53 | Freeze probe: only slot 17 at 13/8 → **froze at once**. Restart |
+| 01:54–01:58 | T15 (section 5), logger with 0.1 s interval over all 70 slots |
+| 02:00 | Original inventory written back, saved at the ship, checked (`after_final_save`: only Stat_DataSaves +1) |
 
-Rohdaten (JSON je Schritt, JSONL-Logs) liegen in `out/t19/` neben dem Repo, nicht im Repo.
+Raw data (JSON per step, JSONL logs) is in `out/t19/` next to the repo, not in the repo.
 
-## 3. Messwerte Durchgang 1 und 2s
+## 3. Measured values of pass 1 and 2s
 
-„vor“ = gelesen 3 s nach dem Schreiben (Spiel hat nichts verändert, außer Slot 47), „nach“ = nach Speichern, Reset, Continue.
+"before" = read 3 s after writing (the game changed nothing, except slot 47), "after" = after saving, reset, Continue.
 
-| Slot | Name | bits | D1 vor | D1 nach | D2s vor | D2s nach | Befund |
+| Slot | Name | bits | P1 before | P1 after | P2s before | P2s after | Finding |
 |---|---|---|---|---|---|---|---|
-| 0 | PowerBeam | 1 | 1/1 | 1/1 | 1/1 | 1/1 | kritisch, nur 1 geschrieben |
-| 1–3, 5–10, 13, 14, 16 | Beams, Charge, Missile-Upgrades, Grapple, Bomb, Command/X-Ray, Screw | 1 | 1/1 | 1/1 | 2/2 | **0/0** | 1 Bit |
-| 4 | Missile | 8 | 245/255 | 255/255 | 256/256 | **0/0** | 8 Bit, Anzahl wird beim Speichern am Schiff auf Kapazität aufgefüllt |
-| 11, 12, 15, 32 | Combat/Scan Visor, DoubleJump, MorphBall | 1 | 1/1 | 1/1 | 1/1 | 1/1 | kritisch, nur 1 geschrieben |
-| 17 | SuitType | 3 | 5/7 | 5/7 | 5/8 | **5/0** | 3 Bit, 7 bleibt, 8 → 0 |
-| 20 | EnergyTank | 4 | 14/15 | 15/15 | 16/16 | **0/0** | 4 Bit, Anzahl wird beim Speichern aufgefüllt |
-| 21 | ItemPercentage | 8 | 199/255 | 199/255 | 256/256 | **0/0** | 8 Bit, Spielstand-Menü zeigt „199%“ |
-| 22 | Fuses | 4 | 9/15 | 9/15 | 16/16 | **0/0** | 4 Bit |
-| 23–31 | Fuse1–9 | 1 | 1/1 | 1/1 | 2/2 | **0/0** | 1 Bit |
-| 33–39 | Boost, Spider, HyperModeTank/Beam/Missile/Ball/Grapple | 1 | 1/1 | 1/1 | 2/2 | **0/0** | 1 Bit |
-| 43 | HyperModeCharge | 1 | 1/1 | 1/1 | 2/2 | **0/0** | 1 Bit (T10-Vermutung bestätigt) |
-| 44 | ShipGrapple | 1 | 1/1 | 1/1 | 2/2 | **0/0** | 1 Bit |
-| 45 | ShipMissile | 4 | 11/15 | 11/15 | 16/16 | **0/0** | 4 Bit, Anzahl **nicht** aufgefüllt (bleibt 11) |
-| 47 | PhazonBall | – | 0/1 (Anzahl live → 0) | **0/0** | 0/2 | **0/0** | nicht gespeichert |
-| 52 | FusesUsed | 4 | 15/15 | 15/15 | 16/16 | **0/0** | 4 Bit |
-| 53, 55, 57, 59, 61 | Fuse1/3/5/7/9Used | 1 | 1/0 | 1/0 | 2/3 | **0/1** | 1 Bit, Anzahl und Kapazität getrennt |
-| 54, 56, 58, 60 | Fuse2/4/6/8Used | 1 | 0/1 | 0/1 | 3/2 | **1/0** | 1 Bit, Anzahl und Kapazität getrennt |
-| 68 | Stat_TinCanHighScore | 17 | 240/131071 | 240/131071 | 131072/131072 | **0/0** | 17 Bit |
-| 69 | Stat_TinCanCurrentScore | – | 8/8 | **0/0** | 9/9 | **0/0** | nicht gespeichert |
+| 0 | PowerBeam | 1 | 1/1 | 1/1 | 1/1 | 1/1 | critical, only 1 written |
+| 1–3, 5–10, 13, 14, 16 | Beams, Charge, missile upgrades, Grapple, Bomb, Command/X-Ray, Screw | 1 | 1/1 | 1/1 | 2/2 | **0/0** | 1 bit |
+| 4 | Missile | 8 | 245/255 | 255/255 | 256/256 | **0/0** | 8 bits, amount is filled up to capacity on saving at the ship |
+| 11, 12, 15, 32 | Combat/Scan Visor, DoubleJump, MorphBall | 1 | 1/1 | 1/1 | 1/1 | 1/1 | critical, only 1 written |
+| 17 | SuitType | 3 | 5/7 | 5/7 | 5/8 | **5/0** | 3 bits, 7 stays, 8 → 0 |
+| 20 | EnergyTank | 4 | 14/15 | 15/15 | 16/16 | **0/0** | 4 bits, amount is filled up on saving |
+| 21 | ItemPercentage | 8 | 199/255 | 199/255 | 256/256 | **0/0** | 8 bits, save menu shows "199%" |
+| 22 | Fuses | 4 | 9/15 | 9/15 | 16/16 | **0/0** | 4 bits |
+| 23–31 | Fuse1–9 | 1 | 1/1 | 1/1 | 2/2 | **0/0** | 1 bit |
+| 33–39 | Boost, Spider, HyperModeTank/Beam/Missile/Ball/Grapple | 1 | 1/1 | 1/1 | 2/2 | **0/0** | 1 bit |
+| 43 | HyperModeCharge | 1 | 1/1 | 1/1 | 2/2 | **0/0** | 1 bit (T10 assumption confirmed) |
+| 44 | ShipGrapple | 1 | 1/1 | 1/1 | 2/2 | **0/0** | 1 bit |
+| 45 | ShipMissile | 4 | 11/15 | 11/15 | 16/16 | **0/0** | 4 bits, amount **not** filled up (stays 11) |
+| 47 | PhazonBall | – | 0/1 (amount live → 0) | **0/0** | 0/2 | **0/0** | not saved |
+| 52 | FusesUsed | 4 | 15/15 | 15/15 | 16/16 | **0/0** | 4 bits |
+| 53, 55, 57, 59, 61 | Fuse1/3/5/7/9Used | 1 | 1/0 | 1/0 | 2/3 | **0/1** | 1 bit, amount and capacity separate |
+| 54, 56, 58, 60 | Fuse2/4/6/8Used | 1 | 0/1 | 0/1 | 3/2 | **1/0** | 1 bit, amount and capacity separate |
+| 68 | Stat_TinCanHighScore | 17 | 240/131071 | 240/131071 | 131072/131072 | **0/0** | 17 bits |
+| 69 | Stat_TinCanCurrentScore | – | 8/8 | **0/0** | 9/9 | **0/0** | not saved |
 
-Auswertung (`slot_probe.py check`): Hypothese „mod 2^bits“ trifft **54/54** in D2s und alle Kapazitäten in D1. Die beiden
-Anzahl-Abweichungen in D1 (Slots 4 und 20) kommen vom Auffüllen beim Speichern am Schiff. Das Logging bestätigt den Ablauf:
-Missile 245 → 255 und Energy Tank 14 → 15 kamen erst beim Speichern, Stat_DataSaves stieg dabei auf 1.
-Hypothese „Klemmen auf das Tabellenmaximum“ trifft 7/54 und ist damit **widerlegt**. Werte über dem Tabellenmaximum
-bleiben erhalten, solange sie in die Bitbreite passen (Suit 7 > 6, Energy Tank 15 > 14, Fuses 15 > 9, Ship Missile 15 > 11).
+Evaluation (`slot_probe.py check`): the hypothesis "mod 2^bits" matches **54/54** in P2s and all capacities in P1. The two
+amount differences in P1 (slots 4 and 20) come from the filling up on saving at the ship. The logging confirms the sequence:
+Missile 245 → 255 and Energy Tank 14 → 15 only came on saving, Stat_DataSaves rose to 1 at the same time.
+The hypothesis "clamping to the table maximum" matches 7/54 and is thus **refuted**. Values above the table maximum
+are kept as long as they fit into the bit width (Suit 7 > 6, Energy Tank 15 > 14, Fuses 15 > 9, Ship Missile 15 > 11).
 
-**Freeze (Durchgang 2):** In `pass2` waren mehrere unmögliche Werte gleichzeitig geschrieben. Einzeln geprüft ist nur
-SuitType 13/8, das friert sofort ein. Nicht einzeln geprüft sind Anzahl > Kapazität bei Items (3/2), ItemPercentage
-257/256, Missile 257/256 (HUD zeigte dabei „255“) und Energy Tank 17/16. Anzahl > Kapazität bei Fuse*Used (1/0, 3/2) lief
-ohne Probleme. Ob Suit-Anzahl 6 oder 7 schon einfriert, ist **nicht** geprüft. 5 (Hazard Shield, T11) geht.
+**Freeze (pass 2):** In `pass2` several impossible values were written at the same time. Only
+SuitType 13/8 was checked on its own; it freezes at once. Not checked on their own are amount > capacity for items (3/2), ItemPercentage
+257/256, Missile 257/256 (the HUD showed "255" meanwhile) and Energy Tank 17/16. Amount > capacity for Fuse*Used (1/0, 3/2) ran
+without problems. Whether Suit amount 6 or 7 already freezes is **not** checked. 5 (Hazard Shield, T11) works.
 
-## 4. Tabelle für T07 (maschinenlesbar)
+## 4. Table for T07 (machine-readable)
 
-Alle Slots, die ein AP-Item berühren kann, dazu die Startitems und die Sonder-Slots aus dem Auftrag. `bits_anzahl` und
-`bits_kapazitaet` gelten für den Spielstand, live halten alle Slots volle `u32`. `max_gueltig` ist der höchste Wert, der Speichern
-und Laden übersteht (`2^bits − 1`), bzw. 0 bei nicht gespeicherten Slots. `pool_max` ist Kapazität nach Start plus vollem
-AP-Pool (`apworld/metroidprime3/data/items.py`, Mengen aus `Item.cs`). `tab_max` ist das Maximum aus der DOL (= `header.json`
-`max_capacity`). Messbelege: Abschnitt 3 (`D1` = Durchgang 1, `D2s` = Durchgang 2s).
+All slots an AP item can touch, plus the starting items and the special slots from the task. `bits_amount` and
+`bits_capacity` apply to the save; live, all slots hold full `u32`. `max_valid` is the highest value that survives saving
+and loading (`2^bits − 1`), or 0 for slots that are not saved. `pool_max` is the capacity after start plus the full
+AP pool (`apworld/metroidprime3/data/items.py`, amounts from `Item.cs`). `tab_max` is the maximum from the DOL (= `header.json`
+`max_capacity`). Measurement evidence: section 3 (`P1` = pass 1, `P2s` = pass 2s).
 
 ```csv
-slot;name;bits_anzahl;bits_kapazitaet;max_gueltig;tab_max;pool_max;pool_ok;besonderheiten
-0;PowerBeam;1;1;1;1;1;ja;Startitem, Kapazität>0 ist Ingame-Kriterium des Clients, nur 1 gemessen
-1;PlasmaBeam;1;1;1;1;1;ja;Progressive Beam Stufe 1, 2 -> 0 gemessen
-2;NovaBeam;1;1;1;1;1;ja;Progressive Beam Stufe 2, 2 -> 0 gemessen
-3;ChargeUpgrade;1;1;1;1;1;ja;Startitem, 2 -> 0 gemessen
-4;Missile;8;8;255;255;245;ja;Launcher 5 + 48x5, Speichern am Schiff füllt Anzahl auf Kapazität, 256 -> 0, Umbuchung aus Slot 68 (T10) kann zusätzlich addieren
-5;IceMissile;1;1;1;1;1;ja;2 -> 0 gemessen
-6;SeekerMissile;1;1;1;1;1;ja;2 -> 0 gemessen
-7;GrappleBeamPull;1;1;1;1;1;ja;2 -> 0 gemessen
-8;GrappleBeamSwing;1;1;1;1;1;ja;2 -> 0 gemessen
-9;GrappleBeamVoltage;1;1;1;1;1;ja;2 -> 0 gemessen
-10;Bomb;1;1;1;1;1;ja;Startitem, 2 -> 0 gemessen
-11;CombatVisor;1;1;1;1;1;ja;Startitem, nur 1 gemessen
-12;ScanVisor;1;1;1;1;1;ja;Startitem, nur 1 gemessen
-13;CommandVisor;1;1;1;1;1;ja;2 -> 0 gemessen
-14;XRayVisor;1;1;1;1;1;ja;2 -> 0 gemessen
-15;DoubleJump;1;1;1;1;1;ja;Startitem Space Jump Boots, nur 1 gemessen
-16;ScrewAttack;1;1;1;1;1;ja;2 -> 0 gemessen
-17;SuitType;3;3;7;6;11;NEIN;Start 0/6, Pickup +5/+5 ergibt 5/11 -> 5/3 nach Laden, 7 bleibt, 8 -> 0, Anzahl ist Index: 13 friert live sofort ein
-20;EnergyTank;4;4;15;14;14;ja;16 -> 0, Speichern am Schiff füllt Anzahl auf Kapazität
-21;ItemPercentage;8;8;255;255;199;ja;Start 0/100, Spiel +1/+1 je Pickup, Client schreibt nicht, 256 -> 0
-22;Fuses;4;4;15;9;9;ja (nur Anzahl);Start 0/9: Kapazität ist fest 9, Anzahl = gehaltene Zellen, Einsetzen senkt Anzahl um 1, Kapazität +1 je Zelle ergäbe 18 -> 2
-23;Fuse1;1;1;1;1;1;ja (nur Anzahl);Start 0/1, Anzahl = Zelle gehalten, Einsetzen setzt Anzahl 0, Kapazität bleibt 1, 2 -> 0
-24;Fuse2;1;1;1;1;1;ja (nur Anzahl);wie 23
-25;Fuse3;1;1;1;1;1;ja (nur Anzahl);wie 23
-26;Fuse4;1;1;1;1;1;ja (nur Anzahl);wie 23
-27;Fuse5;1;1;1;1;1;ja (nur Anzahl);wie 23
-28;Fuse6;1;1;1;1;1;ja (nur Anzahl);wie 23
-29;Fuse7;1;1;1;1;1;ja (nur Anzahl);wie 23
-30;Fuse8;1;1;1;1;1;ja (nur Anzahl);wie 23
-31;Fuse9;1;1;1;1;1;ja (nur Anzahl);wie 23
-32;MorphBall;1;1;1;1;1;ja;Startitem, nur 1 gemessen
-33;BoostBall;1;1;1;1;1;ja;2 -> 0 gemessen
-34;SpiderBall;1;1;1;1;1;ja;2 -> 0 gemessen
-35;HyperModeTank;1;1;1;1;1;ja;Pool-Item Hypermode, 2 -> 0
-36;HyperModeBeam;1;1;1;1;1;ja;kein Pickup, schaltet Menü Hypermode frei (T11), 2 -> 0
-37;HyperModeMissile;1;1;1;1;1;ja;2 -> 0
-38;HyperModeBall;1;1;1;1;1;ja;2 -> 0
-39;HyperModeGrapple;1;1;1;1;1;ja;2 -> 0
-43;HyperModeCharge;1;1;1;1;-;-;Name aus DOL, 2 -> 0, nicht für Zähler/Marker geeignet
-44;ShipGrapple;1;1;1;1;1;ja;2 -> 0
-45;ShipMissile;4;4;15;11;11;ja;Ship Missile 3 + 8x1, Anzahl beim Speichern nicht aufgefüllt, 16 -> 0
-47;PhazonBall;0;0;0;1;-;-;nicht gespeichert (Flag 0), Anzahl = Hypermode aktiv (1 während Nutzung), neues Spiel 0/1, nach Laden 0/0, nie schreiben
-52;FusesUsed;4;4;15;9;-;-;eingesetzte Zellen, Einsetzen +1/0 (Anzahl), 16 -> 0
-53;Fuse1Used;1;1;1;1;-;-;Zelle 1 eingesetzt (Anzahl 0 -> 1 beim Einsetzen, Start 0/1), Anzahl und Kapazität getrennt gespeichert
-54;Fuse2Used;1;1;1;1;-;-;wie 53
-55;Fuse3Used;1;1;1;1;-;-;wie 53
-56;Fuse4Used;1;1;1;1;-;-;wie 53
-57;Fuse5Used;1;1;1;1;-;-;wie 53
-58;Fuse6Used;1;1;1;1;-;-;wie 53
-59;Fuse7Used;1;1;1;1;-;-;wie 53
-60;Fuse8Used;1;1;1;1;-;-;wie 53
-61;Fuse9Used;1;1;1;1;-;-;wie 53
-68;Stat_TinCanHighScore;17;17;131071;99999;240;ja;gesperrte Missile Expansions (T10: +5 je Stück), Spiel bucht nach Slot 4 um, 131072 -> 0
-69;Stat_TinCanCurrentScore;0;0;0;99999;-;-;nicht gespeichert (Flag 0), ob gesperrte Ship Missiles hier landen, ist offen
+slot;name;bits_amount;bits_capacity;max_valid;tab_max;pool_max;pool_ok;notes
+0;PowerBeam;1;1;1;1;1;yes;starting item, capacity>0 is the client's ingame criterion, only 1 measured
+1;PlasmaBeam;1;1;1;1;1;yes;Progressive Beam stage 1, 2 -> 0 measured
+2;NovaBeam;1;1;1;1;1;yes;Progressive Beam stage 2, 2 -> 0 measured
+3;ChargeUpgrade;1;1;1;1;1;yes;starting item, 2 -> 0 measured
+4;Missile;8;8;255;255;245;yes;launcher 5 + 48x5, saving at the ship fills amount up to capacity, 256 -> 0, transfer from slot 68 (T10) can add on top
+5;IceMissile;1;1;1;1;1;yes;2 -> 0 measured
+6;SeekerMissile;1;1;1;1;1;yes;2 -> 0 measured
+7;GrappleBeamPull;1;1;1;1;1;yes;2 -> 0 measured
+8;GrappleBeamSwing;1;1;1;1;1;yes;2 -> 0 measured
+9;GrappleBeamVoltage;1;1;1;1;1;yes;2 -> 0 measured
+10;Bomb;1;1;1;1;1;yes;starting item, 2 -> 0 measured
+11;CombatVisor;1;1;1;1;1;yes;starting item, only 1 measured
+12;ScanVisor;1;1;1;1;1;yes;starting item, only 1 measured
+13;CommandVisor;1;1;1;1;1;yes;2 -> 0 measured
+14;XRayVisor;1;1;1;1;1;yes;2 -> 0 measured
+15;DoubleJump;1;1;1;1;1;yes;starting item Space Jump Boots, only 1 measured
+16;ScrewAttack;1;1;1;1;1;yes;2 -> 0 measured
+17;SuitType;3;3;7;6;11;NO;start 0/6, pickup +5/+5 gives 5/11 -> 5/3 after loading, 7 stays, 8 -> 0, amount is an index: 13 freezes live at once
+20;EnergyTank;4;4;15;14;14;yes;16 -> 0, saving at the ship fills amount up to capacity
+21;ItemPercentage;8;8;255;255;199;yes;start 0/100, game +1/+1 per pickup, client does not write, 256 -> 0
+22;Fuses;4;4;15;9;9;yes (amount only);start 0/9: capacity is fixed at 9, amount = cells held, inserting lowers amount by 1, capacity +1 per cell would give 18 -> 2
+23;Fuse1;1;1;1;1;1;yes (amount only);start 0/1, amount = cell held, inserting sets amount 0, capacity stays 1, 2 -> 0
+24;Fuse2;1;1;1;1;1;yes (amount only);as 23
+25;Fuse3;1;1;1;1;1;yes (amount only);as 23
+26;Fuse4;1;1;1;1;1;yes (amount only);as 23
+27;Fuse5;1;1;1;1;1;yes (amount only);as 23
+28;Fuse6;1;1;1;1;1;yes (amount only);as 23
+29;Fuse7;1;1;1;1;1;yes (amount only);as 23
+30;Fuse8;1;1;1;1;1;yes (amount only);as 23
+31;Fuse9;1;1;1;1;1;yes (amount only);as 23
+32;MorphBall;1;1;1;1;1;yes;starting item, only 1 measured
+33;BoostBall;1;1;1;1;1;yes;2 -> 0 measured
+34;SpiderBall;1;1;1;1;1;yes;2 -> 0 measured
+35;HyperModeTank;1;1;1;1;1;yes;pool item Hypermode, 2 -> 0
+36;HyperModeBeam;1;1;1;1;1;yes;no pickup, unlocks the Hypermode menu (T11), 2 -> 0
+37;HyperModeMissile;1;1;1;1;1;yes;2 -> 0
+38;HyperModeBall;1;1;1;1;1;yes;2 -> 0
+39;HyperModeGrapple;1;1;1;1;1;yes;2 -> 0
+43;HyperModeCharge;1;1;1;1;-;-;name from the DOL, 2 -> 0, not suitable for counters/markers
+44;ShipGrapple;1;1;1;1;1;yes;2 -> 0
+45;ShipMissile;4;4;15;11;11;yes;Ship Missile 3 + 8x1, amount not filled up on saving, 16 -> 0
+47;PhazonBall;0;0;0;1;-;-;not saved (flag 0), amount = Hypermode active (1 while in use), new game 0/1, after loading 0/0, never write
+52;FusesUsed;4;4;15;9;-;-;inserted cells, inserting +1/0 (amount), 16 -> 0
+53;Fuse1Used;1;1;1;1;-;-;cell 1 inserted (amount 0 -> 1 on inserting, start 0/1), amount and capacity saved separately
+54;Fuse2Used;1;1;1;1;-;-;as 53
+55;Fuse3Used;1;1;1;1;-;-;as 53
+56;Fuse4Used;1;1;1;1;-;-;as 53
+57;Fuse5Used;1;1;1;1;-;-;as 53
+58;Fuse6Used;1;1;1;1;-;-;as 53
+59;Fuse7Used;1;1;1;1;-;-;as 53
+60;Fuse8Used;1;1;1;1;-;-;as 53
+61;Fuse9Used;1;1;1;1;-;-;as 53
+68;Stat_TinCanHighScore;17;17;131071;99999;240;yes;locked Missile Expansions (T10: +5 each), game transfers to slot 4, 131072 -> 0
+69;Stat_TinCanCurrentScore;0;0;0;99999;-;-;not saved (flag 0), whether locked Ship Missiles land here is open
 ```
 
-## 5. T15: Sinken Kapazitäten durch Spielereignisse?
+## 5. T15: Do capacities drop through game events?
 
-Aufbau: Neues Spiel mit Ausgangsinventar, dazu per Direktschreiben Hypermode (35–39 je 1/1), 3 Energy Tanks und Energy Cell 1
-(23 = 1/1, 22 = 1/9). Logger über alle 70 Slots im 0,1-s-Takt. Statistik-Slots 62–64 sind hier weggelassen.
+Setup: new game with the original inventory, plus Hypermode (35–39 each 1/1), 3 Energy Tanks and Energy Cell 1
+(23 = 1/1, 22 = 1/9) by direct writing. Logger over all 70 slots at a 0.1 s interval. Statistics slots 62–64 are left out here.
 
-| Ereignis | geprüft | Slot: vorher → nachher | Kapazität gesunken? |
+| Event | checked | Slot: before → after | Capacity dropped? |
 |---|---|---|---|
-| Energy Cell 1 am Terminal in Docking Bay 5 eingesetzt (01:54:52) | ja | 22: 1/9 → **0/9**, 23: 1/1 → **0/1**, 52: 0/9 → 1/9, 53: 0/1 → 1/1 | **nein**, aber die **Anzahl** sinkt (22, 23) |
-| Hypermode aktivieren und beenden, zweimal (01:55:02–01:55:40) | ja | 47: 0/1 → 1/1 → 0/1 (je Nutzung), 66: 0 → 1 → 2. Energy Tank blieb 3/3 | nein |
-| Hypermode bis zur Korruption | ja, aber nicht auslösbar | Hypermode lief ohne Korruption aus (Story-Hypermode noch nicht erreicht) | – |
-| Tod (Game Over, vom Spieler herbeigeführt) und Continue (01:56:50–01:56:55) | ja | Alle 70 Slots = Inventar des letzten Spielstands (byte-gleich mit `loaded_pass2s`). Was seit dem Speichern dazukam, war weg | **ja, auf den Stand des letzten Spielstands** |
-| Flug Valhalla → Norion (01:57:46) | ja | keine Inventaränderung | nein |
-| Speichern am Schiff | ja (T19) | Missile- und Energy-Tank-Anzahl werden auf die Kapazität aufgefüllt, Ship Missile nicht, Stat_DataSaves +1 | nein |
-| Rückflug Norion → Valhalla (01:58:35) | nur Zustandswechsel geloggt | Vergleich nicht ausgewertet (Logpuffer beim Stoppen nicht geschrieben) | offen |
+| Energy Cell 1 inserted at the terminal in Docking Bay 5 (01:54:52) | yes | 22: 1/9 → **0/9**, 23: 1/1 → **0/1**, 52: 0/9 → 1/9, 53: 0/1 → 1/1 | **no**, but the **amount** drops (22, 23) |
+| Activate and end Hypermode, twice (01:55:02–01:55:40) | yes | 47: 0/1 → 1/1 → 0/1 (per use), 66: 0 → 1 → 2. Energy Tank stayed 3/3 | no |
+| Hypermode until corruption | yes, but could not be triggered | Hypermode ran out without corruption (story Hypermode not reached yet) | – |
+| Death (Game Over, caused by the player) and Continue (01:56:50–01:56:55) | yes | All 70 slots = inventory of the last save (byte-identical with `loaded_pass2s`). Whatever was added since saving was gone | **yes, to the state of the last save** |
+| Flight Valhalla → Norion (01:57:46) | yes | no inventory change | no |
+| Saving at the ship | yes (T19) | Missile and Energy Tank amounts are filled up to capacity, Ship Missile is not, Stat_DataSaves +1 | no |
+| Return flight Norion → Valhalla (01:58:35) | only state change logged | comparison not evaluated (log buffer not written when stopping) | open |
 
-**Nicht geprüft (nicht erreichbar ohne Spielfortschritt), die Erkennung übernimmt der Client im Playtest:**
-- Anzugwechsel zum PED-Anzug (Story nach Norion/Olympus), Phazon-Anzug auf Phaaze (Slots 17, 40, 41)
-- Story-Hypermode und Korruption in Bryyo (Slots 42 HyperModeOriginal, 46 FaceCorruptionLevel, 19 HypermodeEnergy), Tod durch Korruption
-- Phaaze: Dauer-Hypermode (40 HyperModePermanent, 41 HyperModePhaaze), Verlust des Hyper-Modus nach dem Endkampf
-- Energy Cells 2–9 einsetzen (nur Cell 1 geprüft), Terminals außerhalb von Valhalla
-- Command Visor gestört (51 CommandVisorJammed), Ship-Missile-Verbrauch, gesperrte Ship Missile Expansion (Slot 69?)
-- Echter Suit-Pickup (Klemmt `add_power_up` die Kapazität auf 6? T11 offen)
+**Not checked (not reachable without game progress), detection is left to the client in the playtest:**
+- Suit change to the PED Suit (story after Norion/Olympus), Phazon Suit on Phaaze (slots 17, 40, 41)
+- Story Hypermode and corruption in Bryyo (slots 42 HyperModeOriginal, 46 FaceCorruptionLevel, 19 HypermodeEnergy), death by corruption
+- Phaaze: permanent Hypermode (40 HyperModePermanent, 41 HyperModePhaaze), loss of Hyper Mode after the final battle
+- Inserting Energy Cells 2–9 (only Cell 1 checked), terminals outside Valhalla
+- Command Visor jammed (51 CommandVisorJammed), Ship Missile consumption, locked Ship Missile Expansion (slot 69?)
+- Real Suit pickup (does `add_power_up` clamp the capacity to 6? T11 open)
 
-## 6. Folgen für T07 und E11
+## 6. Consequences for T07 and E11
 
-- Soll-Werte **absolut** setzen und auf das Tabellenmaximum klemmen (`tab_max`, = `header.json` `max_capacity`). Das ist
-  immer `≤ 2^bits − 1`, damit übersteht jeder geschriebene Wert das Speichern. Nicht blind addieren.
-- **Suit (17):** Pool-Item Hazard Shield als feste Werte schreiben: Anzahl 5, Kapazität 6 (Start-Kapazität). Nie 11
-  (→ 3 nach Laden) und nie eine Anzahl ≥ 8 (13 friert ein, 6/7 ungeprüft).
-- **Energy Cells (22–31):** Die Kapazität ist von Anfang an gesetzt (0/9, 0/1) und ändert sich nie. Das Item ist die **Anzahl**,
-  und die sinkt beim Einsetzen. Soll für Fuse_i: Anzahl 1, solange Zelle i empfangen ist **und** Fuse_iUsed (Slot 52 + i, Anzahl)
-  0 ist, sonst 0. Soll für Slot 22: Anzahl = empfangene minus eingesetzte Zellen (= Summe der Fuse_i-Anzahlen), Kapazität 9.
-  Eine einmal eingesetzte Zelle darf nicht neu gegeben werden.
-- **Missile (4) / Energy Tank (20):** Speichern füllt die Anzahl auf. Bei einer Erhöhung Kapazität auf Soll setzen und Anzahl
-  um dieselbe Differenz anheben (gesunkene Anzahl durch Verbrauch nicht zurücksetzen). Pool 245 bzw. 14 passt.
-  Falls Slot 68 (gesperrte Expansions) im AP-Modus noch gefüllt werden kann, addiert das Spiel ihn beim nächsten Missile-Pickup auf
-  Slot 4 (T10). Das kann über 255 führen und muss vermieden werden. Mit `--ap-mode` (T16, Pickups geben 0/0) fällt das weg.
-- **Tod/Continue** setzt alles auf den letzten Spielstand zurück. Genau dafür braucht E11 den Abgleich ohne gespeicherten Index:
-  Nach jedem Laden muss der Client alle Soll-Werte neu prüfen.
-- Slots 47 und 69 nie als Speicher für Client-Zustand nutzen (nicht gespeichert). 43 und 53–61 tragen nur 1 Bit, und 53–61 haben
-  Spielbedeutung (eingesetzte Zellen).
+- Set target values **absolutely** and clamp them to the table maximum (`tab_max`, = `header.json` `max_capacity`). That is
+  always `≤ 2^bits − 1`, so every written value survives saving. Do not add blindly.
+- **Suit (17):** write the pool item Hazard Shield as fixed values: amount 5, capacity 6 (starting capacity). Never 11
+  (→ 3 after loading) and never an amount ≥ 8 (13 freezes, 6/7 unchecked).
+- **Energy Cells (22–31):** The capacity is set from the start (0/9, 0/1) and never changes. The item is the **amount**,
+  and it drops on inserting. Target for Fuse_i: amount 1 as long as cell i is received **and** Fuse_iUsed (slot 52 + i, amount)
+  is 0, otherwise 0. Target for slot 22: amount = received minus inserted cells (= sum of the Fuse_i amounts), capacity 9.
+  A cell that has been inserted once must not be given again.
+- **Missile (4) / Energy Tank (20):** Saving fills up the amount. On an increase, set capacity to the target and raise the amount
+  by the same difference (do not reset an amount that dropped through consumption). Pool 245 and 14 respectively fits.
+  If slot 68 (locked expansions) can still be filled in AP mode, the game adds it onto slot 4 at the next Missile pickup
+  (T10). That can lead above 255 and must be avoided. With `--ap-mode` (T16, pickups give 0/0) this goes away.
+- **Death/Continue** resets everything to the last save. This is exactly why E11 needs the reconciliation without a stored index:
+  after every load the client must check all target values again.
+- Never use slots 47 and 69 as storage for client state (not saved). 43 and 53–61 hold only 1 bit, and 53–61 have
+  a meaning in the game (inserted cells).
 
-**Empfehlung E11:** „Soll-Kapazität nur anheben“ bleibt für alle echten Kapazitäts-Slots tragfähig, wenn T07 die Soll-Werte
-absolut setzt und auf `max_capacity` klemmt. Ausnahmen sind der Suit (fest 5/6 schreiben) und die Energy Cells 22–31: Dort zählt
-die Anzahl, die beim Einsetzen sinkt, deshalb gilt Soll = empfangen minus eingesetzt laut Slots 52–61, und eingesetzte Zellen
-werden nie neu gegeben.
+**Recommendation E11:** "only raise the target capacity" remains viable for all real capacity slots if T07 sets the target values
+absolutely and clamps them to `max_capacity`. Exceptions are the Suit (write a fixed 5/6) and the Energy Cells 22–31: there
+the amount counts, and it drops on inserting, so target = received minus inserted according to slots 52–61, and inserted cells
+are never given again.
 
-## 7. Grenzen der Messung
+## 7. Limits of the measurement
 
-- Nur PAL `RM3P01`, nur PrimeHack v1.0.9 (Clock Override aus), nur Speichern am Schiff (keine Speicherstation).
-- Bei den kritischen Slots 0, 11, 12, 15, 32 ist der Übergang 2 → 0 nicht gemessen (nur 1/1). Die Bitbreite stammt aus der Tabelle
-  und folgt dem gemessenen Muster der übrigen 1-Bit-Slots.
-- Spielstand nach Durchgang 1 enthielt Werte über `tab_max`. Das Spiel lud sie ohne Fehler, sie wurden aber nicht im Spiel benutzt.
-- Messskript: `apworld/tools/live/slot_probe.py` (schreibt nur ins Inventar-Array im PrimeHack-RAM, nur ingame).
+- PAL `RM3P01` only, PrimeHack v1.0.9 only (Clock Override off), saving at the ship only (no save station).
+- For the critical slots 0, 11, 12, 15, 32 the transition 2 → 0 is not measured (only 1/1). The bit width comes from the table
+  and follows the measured pattern of the other 1-bit slots.
+- The save after pass 1 contained values above `tab_max`. The game loaded them without errors, but they were not used in the game.
+- Measurement script: `apworld/tools/live/slot_probe.py` (writes only to the inventory array in the PrimeHack RAM, only ingame).

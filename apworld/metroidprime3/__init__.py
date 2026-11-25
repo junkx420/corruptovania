@@ -26,10 +26,10 @@ SLOT_DATA_VERSION = 1
 
 
 def launch_client(*args: str) -> None:
-    """Launcher-Komponente "Metroid Prime 3 Client" (T06, docs/AP_CLIENT.md).
+    """Launcher component "Metroid Prime 3 Client" (T06, docs/AP_CLIENT.md).
 
-    T05b: Mit einer ``.apmp3`` als Argument (Doppelklick, "Open Patch", Datei aufs Launcher-Fenster ziehen) wird erst
-    das gepatchte ISO gebaut, dann der Client gestartet (``open_patch.py``, docs/AP_APWORLD_DEV.md).
+    T05b: With an ``.apmp3`` as argument (double click, "Open Patch", dragging the file onto the launcher window) the
+    patched ISO is built first, then the client is started (``open_patch.py``, docs/AP_APWORLD_DEV.md).
     """
     if any(isinstance(arg, str) and arg.lower().endswith(CONTAINER_FILE_ENDING) for arg in args):
         from .open_patch import patch_and_launch

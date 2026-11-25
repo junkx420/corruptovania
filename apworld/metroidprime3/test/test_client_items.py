@@ -141,8 +141,8 @@ class TestEffectTable(unittest.TestCase):
             limit = SLOT_LIMITS[int(row["slot"])]
             self.assertEqual(limit.name, row["name"])
             self.assertEqual(limit.tab_max, int(row["tab_max"]), row["name"])
-            self.assertEqual(limit.bits, int(row["bits_kapazitaet"]), row["name"])
-            self.assertEqual((1 << limit.bits) - 1 if limit.bits else 0, int(row["max_gueltig"]), row["name"])
+            self.assertEqual(limit.bits, int(row["bits_capacity"]), row["name"])
+            self.assertEqual((1 << limit.bits) - 1 if limit.bits else 0, int(row["max_valid"]), row["name"])
 
 
 class TestTargets(unittest.TestCase):
