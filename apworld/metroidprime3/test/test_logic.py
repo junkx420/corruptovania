@@ -1,12 +1,14 @@
-"""Rule evaluation, reachability with all items, escape gates (E18) and a cross-check against playthrough_sim."""
+"""Rule evaluation, reachability with all items, escape gates (E18), dead-end locations (E22) and a cross-check
+against playthrough_sim."""
 
 import random
 import unittest
 
 from BaseClasses import CollectionState
 
+from ..data import locations as location_data
 from ..data import logic as logic_data
-from ..items import RECORDS, pool_names, starting_names
+from ..items import BASE_ID, RECORDS, pool_names, starting_names
 from ..regions import GOAL_EVENT, node_name, reachable_graph
 from ..rules import ALWAYS, NEVER, RuleCompiler, StaticState
 from . import MP3TestBase, load_playthrough_sim
@@ -139,7 +141,8 @@ class TestReachability(MP3TestBase):
         self.assertTrue(region.can_reach(self._state_with(names + ["Grapple Lasso"])))
 
     def test_matches_playthrough_sim_logic(self) -> None:
-        """Reachable nodes and events agree with playthrough_sim.World.reach(logic=True) for random inventories."""
+        """Reachable nodes, events and locations agree with playthrough_sim.World.reach(logic=True) for random
+        inventories (locations: node reached and escape_requirement held, E22)."""
         sim = load_playthrough_sim()
         if sim is None:
             self.skipTest("apworld/tools/playthrough_sim.py not found")
@@ -147,8 +150,11 @@ class TestReachability(MP3TestBase):
         full = [n for n in pool_names() if RECORDS[n]["progression"]]
         rng = random.Random(7)
         node_regions = {node_name(node): node for node in reachable_graph().nodes}
-        for _ in range(40):
-            names = rng.sample(full, rng.randint(0, len(full)))
+        locations = {loc.address - BASE_ID: loc for loc in self.multiworld.get_locations(self.player)
+                     if loc.address is not None}
+        inventories = [[n for n in full if n != missing] for missing in sorted(set(full))]
+        inventories += [rng.sample(full, rng.randint(0, len(full))) for _ in range(40)]
+        for names in inventories:
             state = self._state_with(names)
             inv, _ = sim_world.inventory([RECORDS[n] for n in names + starting_names()])
             nodes, events, _, _ = sim_world.reach(inv)
@@ -157,3 +163,55 @@ class TestReachability(MP3TestBase):
             self.assertEqual(ap_nodes, set(nodes), sorted(names))
             ap_events = {ev for ev in logic_data.EVENTS if state.has(ev, self.player)}
             self.assertEqual(ap_events, set(events), sorted(names))
+            ap_locations = {lid for lid, loc in locations.items() if loc.can_reach(state)}
+            self.assertEqual(ap_locations, sim_world.reachable_locations(nodes, inv, events), sorted(names))
+
+
+class TestDeadEndLocations(MP3TestBase):
+    """E22 (T25): a location's access rule is its escape_requirement from the data."""
+
+    # exit items of the three Leviathan cores (randovania/games/prime3/logic_database/* - Seed.txt)
+    CORES = {98: ("Hyper Ball",), 97: ("Hyper Missile",), 99: ("Hyper Grapple",)}
+
+    def _state_with(self, names) -> CollectionState:
+        state = CollectionState(self.multiworld)
+        for name in names:
+            state.collect(self.world.create_item(name), prevent_sweep=True)
+        state.sweep_for_advancements()
+        return state
+
+    def _location(self, pickup: int):
+        return next(loc for loc in self.multiworld.get_locations(self.player) if loc.address == BASE_ID + pickup)
+
+    def test_rules_come_from_the_data(self) -> None:
+        compiler = RuleCompiler(self.player)
+        with_rule = []
+        for loc in location_data.LOCATIONS:
+            location = self._location(loc["id"])
+            if loc["escape_requirement"] == {"and": []}:
+                self.assertIs(location.access_rule, ALWAYS, loc["name"])
+            else:
+                with_rule.append(loc["id"])
+                self.assertIsNot(compiler.compile(loc["escape_requirement"]), ALWAYS, loc["name"])
+        self.assertEqual(len(with_rule), 22)
+        self.assertTrue({97, 98, 99} <= set(with_rule))
+
+    def test_leviathan_cores_need_their_exit_item(self) -> None:
+        """B5: the core's region is reachable without the exit item, the location is not."""
+        full = [n for n in pool_names() if RECORDS[n]["progression"]]
+        for pickup, exit_items in self.CORES.items():
+            location = self._location(pickup)
+            names = [n for n in full if n not in exit_items]
+            state = self._state_with(names)
+            self.assertTrue(location.parent_region.can_reach(state), location.name)
+            self.assertFalse(location.can_reach(state), location.name)
+            self.assertTrue(location.can_reach(self._state_with(full)), location.name)
+
+    def test_exit_item_never_placed_in_its_own_core(self) -> None:
+        """Side effect of E22 (accepted): Archipelago's fill cannot put a core's exit item into that core."""
+        for pickup, exit_items in self.CORES.items():
+            location = self._location(pickup)
+            names = [n for n in pool_names() if RECORDS[n]["progression"] and n not in exit_items]
+            for item in exit_items:
+                self.assertFalse(location.can_fill(self._state_with(names), self.world.create_item(item)),
+                                 (location.name, item))

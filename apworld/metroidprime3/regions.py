@@ -1,7 +1,8 @@
 """Regions of the Metroid Prime 3 APWorld: one AP region per logic node (data/logic.py).
 
 Connections become entrances (several connections between the same two nodes are merged with OR), event sources
-become event locations with a locked event item, pickup nodes hold the 99 AP locations.
+become event locations with a locked event item, pickup nodes hold the 99 AP locations. A location's access rule is
+its ``escape_requirement`` from the data (E22: the way back from a dead end; ``{"and": []}`` = no rule).
 
 Nodes and event sources that cannot be reached even with every item (no tricks in the MVP) are left out, so that
 every created region and location is reachable with all items (Archipelago's general reachability test). The logic
@@ -134,7 +135,9 @@ def create_regions(world: "MP3World") -> None:
 
     for loc in LOCATIONS:
         region = regions[node_of(loc)]
-        region.locations.append(MP3Location(player, loc["name"], location_name_to_id[loc["name"]], region))
+        location = MP3Location(player, loc["name"], location_name_to_id[loc["name"]], region)
+        location.access_rule = compiler.compile(loc["escape_requirement"])
+        region.locations.append(location)
 
     for src in graph.sources:
         region = regions[src.node]

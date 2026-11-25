@@ -37,10 +37,13 @@ venv/Scripts/python.exe apworld/tools/playthrough_sim.py --seeds 100 --eager 0.5
 | `LOCATIONS` | list of exactly 99 locations, sorted by `id` (1–99) |
 | `UNPATCHED_LOCATION` | pickup index 0 (Olympus, MedLab Delta). The patcher never touches it (E13); it is **not** an AP location and not part of the AP logic (E17). `vanilla_item` = `Hypermode` (for information only: that is what location 0 gives locally in the game) |
 
-A location: `{"id", "name", "region", "area", "node", "category"}`.
+A location: `{"id", "name", "region", "area", "node", "category", "escape_requirement"}`, for the 22 dead-end
+locations also `"escape_triggered_events"` and `"escape_inlined_events"`.
 - `id` = pickup index of the Corruptovania loader = numbering of the patcher. That is the AP location ID.
 - `name` = `"<region> - <area> - <node>"`, unique. Some region names themselves contain a " - " (e.g. `SkyTown, Elysia - Main`).
 - `region`/`area`/`node` address the node in `logic.REGIONS`. `category` = `major` or `minor`.
+- `escape_requirement`: the location's own access rule (E22, "Dead-end locations" below). `{"and": []}` = no rule
+  (77 locations).
 
 ### `items.py`
 
@@ -111,13 +114,76 @@ evaluates the data as usual and needs **no special logic**.
   "Gel Processing Site Out of Bounds" only works via trick (even without the lock); with all tricks it is all 22.
 - If the player triggers an event too early against the logic, reloading helps (E18; whether that works in the game: T21).
 
+**Dead-end locations (E22, T25).** Some pickups can be reached but not left without a certain item (T08 B5: the
+Bryyo Leviathan Core after Mogenar is left only with Hyper Ball). The converter computes an `escape_requirement`
+for **every** pickup node with the same solver as the node lock: the way from the pickup node to a ship in the state
+"after the pickup and after all events on the way there". It is stored in `LOCATIONS` and is the location's access
+rule; the APWorld compiles it like any requirement (no special logic).
+- State: the events that every way to the node triggers (`escape_triggered_events`: the node is unreachable with
+  all items when the event, and for a database event its node, is blocked) count as triggered ("before X" false,
+  X satisfied). Other "before Y" count as satisfied, as everywhere.
+- Cycle-free: events that are only reachable through the pickup node (`escape_inlined_events`) are replaced by their
+  own requirement from there. Starting items are owned anyway and never appear in the requirement. Connections
+  already carry the node lock, so a way out through a dangerous event node needs that node's escape too.
+- Leaves: `item`, `damage`, `event` (no `negate`). Tricks/misc/version fixed with the preset values (as above).
+- **Trivial** (stored as `{"and": []}`): every state that reaches the pickup node in the logic already satisfies it.
+  Checked exactly: the forward DNF from the start (all events inlined) gives the minimal item sets that reach the
+  node; for each of them plus the events it reaches, the requirement must hold (the logic is monotonic).
+  77 locations are trivial, 22 are not.
+- The item placed at a location is not known to the rule (the pickup's own item never counts). So a location whose
+  escape needs its own vanilla item cannot hold that item any more (accepted in E22): 63 Boost Ball,
+  64 Spider Ball, 76 Hazard Shield, 95 Nova Beam (Progressive Beam), 97 Hyper Missile, 98 Hyper Ball, 99 Hyper Grapple.
+- Control values (test, from `randovania/games/prime3/logic_database/* - Seed.txt`): 98 Bryyo Leviathan Core =
+  Hyper Ball + Hypermode (HyperModeTank, Energy Tank); 97 Elysian Leviathan Core = Hyper Missile + Missile ≥ 4;
+  99 Pirate Homeworld Leviathan Core = Hyper Grapple + Grapple Voltage + Grapple Lasso. The cores are reachable
+  without these items, only the locations are not.
+
+Locations with a non-trivial `escape_requirement` (printed by `python apworld/tools/test_convert_db.py`; "ways" =
+alternatives in the OR, the shortest one shown):
+
+| ID | Location | Ways | Shortest way out |
+|---|---|---|---|
+| 26 | Bryyo - Reptilicus - Reliquary I - Pickup (Grapple Swing) | 18 | Grapple Lasso + Screw Attack |
+| 28 | Bryyo - Reptilicus - Hillside Vista - Pickup (Missile Expansion) | 18 | Grapple Lasso + Screw Attack |
+| 29 | Bryyo - Reptilicus - Gateway - Pickup (Missile Expansion) | 21 | Grapple Lasso |
+| 35 | Bryyo - Reptilicus - Reliquary II - Pickup (Energy Tank) | 17 | Grapple Lasso |
+| 56 | SkyTown, Elysia - Main - Skybridge Hera - Pickup (Missile Expansion) | 16 | events Defense Drone, Landing Site A Unlocked + Grapple Swing |
+| 57 | SkyTown, Elysia - Main - Zipline Station Charlie - Pickup (Energy Tank) | 6 | event Landing Site A Unlocked + Boost Ball, Grapple Swing, Screw Attack, Spider Ball |
+| 58 | SkyTown, Elysia - Main - Construction Bay - Pickup (Missile Expansion) | 12 | events Defense Drone, Landing Site A Unlocked + Grapple Swing, Screw Attack |
+| 59 | SkyTown, Elysia - Main - Security Station - Pickup (Ship Missile Expansion) | 6 | event Landing Site A Unlocked |
+| 60 | SkyTown, Elysia - Main - Steambot Barracks - Pickup (Missile Expansion) | 7 | event Steambot Barracks Gate + Boost Ball, Grapple Swing |
+| 61 | SkyTown, Elysia - Main - Steambot Barracks - Pickup (Energy Tank) | 7 | event Steambot Barracks Gate + Boost Ball, Grapple Swing |
+| 62 | SkyTown, Elysia - Main - Ballista Storage - Pickup (Energy Cell) | 8 | events Defense Drone, Landing Site A Unlocked + Boost Ball, Grapple Swing |
+| 63 | SkyTown, Elysia - Main - Ballista Storage - Pickup (Boost Ball) | 8 | event Landing Site A Unlocked + Boost Ball, Grapple Swing |
+| 64 | SkyTown, Elysia - Main - Powerworks - Pickup (Spider Ball) | 6 | event Landing Site A Unlocked + Boost Ball, Grapple Swing, Screw Attack, Spider Ball |
+| 75 | Pirate Homeworld - Research - Craneyard - Pickup (Missile Expansion) | 3 | events Landing Site Alpha Barrier, Proving Grounds Barrier Removed + Boost Ball, Spider Ball, Suit Type |
+| 76 | Pirate Homeworld - Research - Craneyard - Pickup (Hazard Shield) | 3 | events Landing Site Alpha Barrier, Proving Grounds Barrier Removed + Suit Type |
+| 84 | Pirate Homeworld - Research - Scrapworks - Pickup (Energy Tank) | 2 | event Scrapworks Exit Hatch + Boost Ball (or Spider Ball) |
+| 86 | Pirate Homeworld - Command - Security Air Lock - Pickup (Missile Expansion) | 14 | event Security Air Lock Gate |
+| 94 | Pirate Homeworld - Mines - Phazon Quarry - Pickup (Missile Expansion) | 7 | events Defense Access Voltage Barrier, Security Air Lock Gate |
+| 95 | Pirate Homeworld - Mines - Main Cavern - Pickup (Nova Beam) | 9 | event Landing Site Charlie Cleanup + Nova Beam, X-Ray Visor |
+| 97 | SkyTown, Elysia - Seed - Elysian Leviathan Core - Pickup (Hyper Missile) | 1 | Hyper Missile + Missile ≥ 4 |
+| 98 | Bryyo - Seed - Bryyo Leviathan Core - Pickup (Hyper Ball) | 1 | Hyper Ball + HyperModeTank + Energy Tank |
+| 99 | Pirate Homeworld - Seed - Pirate Homeworld Leviathan Core - Pickup (Hyper Grapple) | 1 | Hyper Grapple + Grapple Voltage + Grapple Lasso |
+
+Location 84 is reachable with the starting items alone (all landing sites are unlocked in this preset), but it is
+only left with Boost Ball or Spider Ball. Events in the requirements are reached on the way out or elsewhere; the
+AP state holds them as event items.
+
 **Playthrough simulator** (`apworld/tools/playthrough_sim.py`, only on this data): random fill in the AP manner
-(progression one at a time onto locations reachable with all remaining progression items, then filler) and a player
-who follows the logic. They only enter a dangerous event node if its `escape_requirement` holds; the event
-triggers, they then stand at the node and only get further via real paths ("before X" false, connections without lock).
-`World.reach(..., logic=True)` = AP logic, `logic=False` = game physics, `gated=False` = logic without lock.
-Test (seeds 0–99, allowed events half the time even before collecting): 100/100 won, all 99 locations each time.
-Without the lock the same player gets stuck (control test).
+(progression one at a time onto locations reachable with all remaining progression items whose
+`escape_requirement` holds, then filler) and a player who follows the logic. They only enter a dangerous event node
+if its `escape_requirement` holds; the event triggers, they then stand at the node and only get further via real
+paths ("before X" false, connections without lock). They only enter a location if its `escape_requirement` holds
+(dead-end rule); collecting it means walking to the pickup node, and if they cannot walk back from there to where
+they stood (physically, with the item), they now stand at the pickup node. `trapped` = no ship reachable from where
+they end.
+`World.reach(..., logic=True)` = AP logic, `logic=False` = game physics, `gated=False` = logic without lock,
+`World(data, location_escapes=False)` = logic without the location rules (before E22).
+Test (seeds 0–99, allowed events half the time even before collecting): 100/100 won, all 99 locations each time,
+never trapped. Control tests: without the lock the same player gets stuck; without the location rules (fill and
+player) 2/100 seeds are won and 98/100 end trapped (mostly in location 84); without only location 98's rule the
+player is stranded in the Bryyo Leviathan Core in 7/100 seeds (B5), without only 99's in 18/100.
 
 ### `game.py`
 
@@ -142,7 +208,8 @@ Without the lock the same player gets stuck (control test).
 
 ## Use by the APWorld (T04)
 
-1. One AP location per `LOCATIONS` entry (ID = `id`), in the room `(region, area)`.
+1. One AP location per `LOCATIONS` entry (ID = `id`), in the room `(region, area)`, access rule = its
+   `escape_requirement` (E22).
 2. `count` items per `ITEMS` entry. `progression` controls the AP class.
 3. Location 0 (`UNPATCHED_LOCATION`) is not a location and does not occur in the logic. Hypermode is a normal pool item.
 4. Translate requirement trees into rules: "before event" = satisfied, "no item" and `node` = not satisfied.

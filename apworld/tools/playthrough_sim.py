@@ -1,4 +1,4 @@
-"""Playthrough simulator for the generated APWorld data (T20, E18).
+"""Playthrough simulator for the generated APWorld data (T20, E18, T25/E22).
 
 Works only on the data in apworld/metroidprime3/data (no randovania import), so it can also be used by the
 APWorld tests (T04b). Two parts:
@@ -6,16 +6,20 @@ APWorld tests (T04b). Two parts:
 1. ``World``: a fast evaluator of the requirement trees (AP logic and "physical" game rules).
 2. ``fill`` + ``play``: a random AP-style fill (assumed fill like Archipelago's fill_restrictive) and a player
    who follows the logic. Entering a dangerous event node triggers that event; the player then stands at the node
-   and can only move on along real ways ("before X" is now false).
+   and can only move on along real ways ("before X" is now false). Collecting a location means walking to its
+   pickup node; if the player cannot walk back from there to where he stood, he now stands at the pickup node
+   (a dead end, T08 B5). He only enters a location whose ``escape_requirement`` (E22) holds.
 
 Modes of ``World.reach``:
-    logic=True   AP logic: every "before <event>" counts as satisfied, connections carry the escape gate (E18).
+    logic=True   AP logic: every "before <event>" counts as satisfied, connections carry the escape gate (E18),
+                 a location is only collected (``placement``) once its escape_requirement holds (E22).
     logic=False  physical: "before X" is satisfied while X has not been triggered, connections use their base
                  requirement (without the escape gate), untriggered dangerous event nodes are not entered but
                  reported as ``hits`` (entering them triggers the event, the caller decides).
 
 Usage (from the repo root):
-    venv/Scripts/python.exe apworld/tools/playthrough_sim.py [--seeds 100] [--first 0] [-v]
+    venv/Scripts/python.exe apworld/tools/playthrough_sim.py [--seeds 100] [--first 0] [--eager 0.5] [-v]
+        [--no-dead-end-rule]
 """
 
 from __future__ import annotations
@@ -57,7 +61,8 @@ def _false(inv, evs, phys):
 class World:
     """Compiled logic graph. ``data`` has the attributes logic, game, items, locations (modules or namespaces)."""
 
-    def __init__(self, data, tricks: dict[str, int] | None = None) -> None:
+    def __init__(self, data, tricks: dict[str, int] | None = None, location_escapes: bool = True) -> None:
+        """``location_escapes=False`` ignores the escape_requirement of the locations (logic before E22)."""
         self.data = data
         logic, game = data.logic, data.game
         settings = game.SETTINGS
@@ -92,7 +97,14 @@ class World:
                 self.sources.append((name, tuple(src["node"]), fn, deps))
         self.loc_node = {loc["id"]: (loc["region"], loc["area"], loc["node"]) for loc in data.locations.LOCATIONS}
         self.node_loc = {node: lid for lid, node in self.loc_node.items()}
+        # location rules (E22) as (fn, deps); data without the field (or location_escapes=False): always
+        self.loc_rule = {
+            loc["id"]: self.compile(loc.get("escape_requirement", {"and": []}) if location_escapes else {"and": []})
+            for loc in data.locations.LOCATIONS}
         self.victory, _ = self.compile(game.VICTORY_REQUIREMENT)
+        self.ships = [((r, a, n), self.compile(info["is_unlocked"])[0])
+                      for r, region in logic.REGIONS.items() for a, area in region["areas"].items()
+                      for n, info in area["nodes"].items() if info["type"] == "teleporter_network"]
 
     # ------------------------------------------------------------ requirement compiler
     def compile(self, req: dict) -> tuple:
@@ -190,8 +202,9 @@ class World:
         ``gated`` (default: = ``logic``): use the escape gates on connections into dangerous event nodes.
         ``logic=True, gated=False`` is the logic as it was before E18 (used by the converter and for analyses).
 
-        ``placement`` (location id -> item record): items at reached locations are collected on the way (sweep);
-        ``inv``/``copies`` are then updated in place. Returns (reached nodes, events, hits, collected location ids).
+        ``placement`` (location id -> item record): items at reached locations are collected on the way (sweep),
+        in logic mode only once the location's escape_requirement holds (E22); ``inv``/``copies`` are then updated
+        in place. Returns (reached nodes, events, hits, collected location ids).
         ``hits``: untriggered dangerous event nodes the player could enter (physical mode only).
         """
         phys = not logic
@@ -204,8 +217,9 @@ class World:
         reached: set = set()
         hits: set = set()
         collected: list[int] = []
+        done: set[int] = set()
         pending: dict[tuple, set] = collections.defaultdict(set)
-        tasks: list[tuple[int, int]] = []  # (0, conn index) or (1, source index)
+        tasks: list[tuple[int, int]] = []  # (0, conn index), (1, source index) or (2, location id)
         conns, sources = self.conns, self.sources
         if gated is None:
             gated = logic
@@ -218,9 +232,7 @@ class World:
             if placement is not None:
                 lid = self.node_loc.get(node)
                 if lid is not None and lid in placement:
-                    collected.append(lid)
-                    for resource in self.give(inv, copies, placement[lid]):
-                        tasks.extend(pending.pop(("i", resource), ()))
+                    tasks.append((2, lid))
 
         for node in ([self.start] if start is None else start):
             if node not in reached:
@@ -241,7 +253,7 @@ class World:
                     task = (0, idx)
                     for key in conn[dep_i]:
                         pending[key].add(task)
-            else:
+            elif kind == 1:
                 name, _, fn, deps = sources[idx]
                 if name in evs or name in blocked_events:
                     continue
@@ -252,10 +264,39 @@ class World:
                     task = (1, idx)
                     for key in deps:
                         pending[key].add(task)
+            else:
+                if idx in done:
+                    continue
+                fn, deps = self.loc_rule[idx]
+                if phys or fn(inv, evs, phys):
+                    done.add(idx)
+                    collected.append(idx)
+                    for resource in self.give(inv, copies, placement[idx]):
+                        tasks.extend(pending.pop(("i", resource), ()))
+                else:
+                    for key in deps:
+                        pending[key].add((2, idx))
         return reached, evs, hits, collected
 
-    def reachable_locations(self, reached) -> set[int]:
-        return {lid for lid, node in self.loc_node.items() if node in reached}
+    def reachable_locations(self, reached, inv: dict | None = None, evs=None) -> set[int]:
+        """Locations whose node is in ``reached``; with ``inv`` only those the AP logic allows (E22)."""
+        if inv is None:
+            return {lid for lid, node in self.loc_node.items() if node in reached}
+        return {lid for lid, node in self.loc_node.items() if node in reached and self.location_ok(lid, inv, evs)}
+
+    def location_ok(self, lid: int, inv: dict, evs) -> bool:
+        """The location's escape_requirement (E22), evaluated like the AP logic does."""
+        return self.loc_rule[lid][0](inv, evs, False)
+
+    def can_return(self, lid: int, to: tuple, inv: dict, evs) -> bool:
+        """Physically: from the pickup node of ``lid`` back to the node ``to`` (inventory and events as given)."""
+        reached, _, _, _ = self.reach(inv, logic=False, start=[self.loc_node[lid]], events=evs)
+        return to in reached
+
+    def ship_reachable(self, node: tuple, inv: dict, evs) -> bool:
+        """Physically: a ship (teleporter_network node whose is_unlocked holds) is reachable from ``node``."""
+        reached, evs, _, _ = self.reach(inv, logic=False, start=[node], events=evs)
+        return any(n in reached and fn(inv, evs, True) for n, fn in self.ships)
 
     def escape_ok(self, event: str, inv: dict, evs) -> bool:
         """The escape gate of a dangerous event, evaluated like the AP logic does."""
@@ -280,8 +321,9 @@ def fill(world: World, rng: random.Random, attempts: int = 20) -> dict[int, dict
         while items:
             item = items.pop()
             inv, copies = world.inventory(items + start)
-            reached, _, _, _ = world.reach(inv, placement=placed, copies=copies)
-            free = [lid for lid in locations if lid not in placed and world.loc_node[lid] in reached]
+            reached, evs, _, _ = world.reach(inv, placement=placed, copies=copies)
+            free = [lid for lid in locations if lid not in placed and world.loc_node[lid] in reached
+                    and world.location_ok(lid, inv, evs)]
             if not free:
                 ok = False
                 break
@@ -296,24 +338,32 @@ def fill(world: World, rng: random.Random, attempts: int = 20) -> dict[int, dict
 
 
 # ---------------------------------------------------------------- player
-def play(world: World, placement: dict[int, dict], rng: random.Random | None = None, eager: float = 0.0) -> dict:
+def play(world: World, placement: dict[int, dict], rng: random.Random | None = None, eager: float = 0.0,
+         dead_end_rule: bool = True) -> dict:
     """A player who follows the logic.
 
     Each step looks at what is physically reachable from the current position. An untriggered dangerous event
-    node may only be entered if its escape gate holds (what the AP logic asks of every connection into it).
-    The player enters one of those nodes (random among them if ``rng``, else the first by name) when nothing new
-    is left to collect, or earlier with probability ``eager``. Otherwise he collects every reachable location.
-    Entering triggers the event; the player then stands at its node. He keeps playing after the goal (to see
-    whether locations got lost) and stops when nothing is left. Won = goal event triggered.
+    node may only be entered if its escape gate holds (what the AP logic asks of every connection into it), a
+    location only if its escape_requirement holds (E22, what the AP logic asks of the location; ignored with
+    ``dead_end_rule=False``). The player enters one of the allowed event nodes (random among them if ``rng``, else
+    the first by name) when nothing new is left to collect, or earlier with probability ``eager``. Otherwise he
+    collects the allowed locations: first every one he can walk back from to his position even without its item,
+    then the others one by one. If he cannot walk back from a pickup node (with its item), he now stands there
+    (recorded in ``dead_ends``) and the step ends. Entering an event node triggers the event; the player then
+    stands at its node. He keeps playing after the goal (to see whether locations got lost) and stops when nothing
+    is left. Won = goal event triggered. ``trapped`` = no ship is reachable from where he ended.
     """
     inv, copies = world.inventory(world.data.items.STARTING_ITEMS)
     evs: set[str] = set()
     collected: set[int] = set()
     pos = world.start
     order: list[str] = []
+    dead_ends: list[int] = []
     while True:
         reached, evs, hits, _ = world.reach(inv, logic=False, start=[pos], events=evs)
         new = sorted(world.reachable_locations(reached) - collected)
+        if dead_end_rule:
+            new = [lid for lid in new if world.location_ok(lid, inv, evs)]
         allowed = [x for x in sorted(world.dangerous_node[n] for n in hits) if world.escape_ok(x, inv, evs)]
         if allowed and (not new or (rng is not None and eager and rng.random() < eager)):
             event = rng.choice(allowed) if rng is not None else allowed[0]
@@ -323,9 +373,20 @@ def play(world: World, placement: dict[int, dict], rng: random.Random | None = N
             continue
         if not new:
             break
+        risky = []
         for lid in new:
+            if world.can_return(lid, pos, inv, evs):
+                world.give(inv, copies, placement[lid])
+                collected.add(lid)
+            else:
+                risky.append(lid)
+        for lid in risky:
             world.give(inv, copies, placement[lid])
-        collected.update(new)
+            collected.add(lid)
+            if not world.can_return(lid, pos, inv, evs):
+                dead_ends.append(lid)
+                pos = world.loc_node[lid]
+                break
     return {
         "won": GOAL_EVENT in evs,
         "collected": len(collected),
@@ -333,10 +394,12 @@ def play(world: World, placement: dict[int, dict], rng: random.Random | None = N
         "triggered": order,
         "untriggered_dangerous": sorted(set(world.dangerous) - set(order)),
         "end": pos,
+        "dead_ends": dead_ends,
+        "trapped": not world.ship_reachable(pos, inv, evs),
     }
 
 
-def simulate(world: World, seeds, verbose: bool = False, eager: float = 0.0) -> dict:
+def simulate(world: World, seeds, verbose: bool = False, eager: float = 0.0, dead_end_rule: bool = True) -> dict:
     """Fill + play for each seed in ``seeds``. Returns a summary."""
     summary = collections.Counter()
     failures = []
@@ -347,15 +410,17 @@ def simulate(world: World, seeds, verbose: bool = False, eager: float = 0.0) -> 
             summary["fill_failed"] += 1
             failures.append((seed, "fill failed"))
             continue
-        result = play(world, placement, rng, eager)
+        result = play(world, placement, rng, eager, dead_end_rule)
         summary["seeds"] += 1
         summary["won"] += result["won"]
         summary["all_99_collected"] += result["collected"] == len(world.loc_node)
+        summary["trapped"] += result["trapped"]
         if not result["won"]:
             failures.append((seed, result))
         if verbose:
             print(f"seed {seed}: won={result['won']} collected={result['collected']} missing={result['missing']} "
-                  f"untriggered={result['untriggered_dangerous']}", flush=True)
+                  f"untriggered={result['untriggered_dangerous']} dead_ends={result['dead_ends']} "
+                  f"trapped={result['trapped']}", flush=True)
     return {"summary": dict(summary), "failures": failures}
 
 
@@ -366,11 +431,14 @@ def main() -> None:
     parser.add_argument("--first", type=int, default=0)
     parser.add_argument("--eager", type=float, default=0.0,
                         help="probability to trigger an allowed dangerous event before collecting (0..1)")
+    parser.add_argument("--no-dead-end-rule", action="store_true",
+                        help="counter-check: fill and player ignore the locations' escape_requirement (before E22)")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
-    world = World(load_data(args.data))
+    rule = not args.no_dead_end_rule
+    world = World(load_data(args.data), location_escapes=rule)
     t0 = time.time()
-    result = simulate(world, range(args.first, args.first + args.seeds), args.verbose, args.eager)
+    result = simulate(world, range(args.first, args.first + args.seeds), args.verbose, args.eager, rule)
     print(result["summary"], f"{time.time() - t0:.1f}s")
     for seed, why in result["failures"]:
         print("FAILED", seed, why)

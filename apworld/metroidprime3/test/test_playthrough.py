@@ -8,7 +8,7 @@ The simulator (apworld/tools/playthrough_sim.py, T20) already takes a placement 
 import random
 import unittest
 
-from BaseClasses import MultiWorld
+from BaseClasses import Location, MultiWorld
 from Fill import balance_multiworld_progression, distribute_items_restrictive
 from test.general import gen_steps, setup_solo_multiworld
 from worlds.AutoWorld import call_all
@@ -22,9 +22,14 @@ SEEDS = range(1, 21)
 FOREIGN_ITEM = {"name": "Foreign item", "stages": [[]]}  # an item of another world gives nothing locally
 
 
-def generate(seed: int) -> MultiWorld:
-    """The generation steps of Archipelago's Main.py up to progression balancing, without output."""
+def generate(seed: int, location_rules: bool = True) -> MultiWorld:
+    """The generation steps of Archipelago's Main.py up to progression balancing, without output.
+    ``location_rules=False`` drops the locations' escape rules before the fill (logic before E22, control)."""
     multiworld = setup_solo_multiworld(MP3World, gen_steps, seed)
+    if not location_rules:
+        for location in multiworld.get_locations(1):
+            if location.address is not None:
+                location.access_rule = Location.access_rule
     distribute_items_restrictive(multiworld)
     call_all(multiworld, "post_fill")
     balance_multiworld_progression(multiworld)
@@ -59,3 +64,19 @@ class TestPlaythrough(unittest.TestCase):
                     result = sim.play(world, placement, random.Random(seed), eager)
                     self.assertTrue(result["won"], (seed, eager, result))
                     self.assertEqual(result["collected"], 99, (seed, eager, result["missing"]))
+                    self.assertFalse(result["trapped"], (seed, eager, result["end"]))
+
+    def test_dead_ends_trap_the_player_without_location_rules(self) -> None:
+        """Control (E22, T08 B5): the same seeds generated without the location rules, played by a player who
+        ignores them too, strand him in a dead end in some seeds."""
+        sim = load_playthrough_sim()
+        if sim is None:
+            self.skipTest("apworld/tools/playthrough_sim.py not found")
+        world = sim.World(sim.load_data(), location_escapes=False)
+        trapped = []
+        for seed in SEEDS:
+            placement = ap_placement(generate(seed, location_rules=False), 1)
+            result = sim.play(world, placement, random.Random(seed), 0.5, dead_end_rule=False)
+            if result["trapped"]:
+                trapped.append((seed, result["dead_ends"]))
+        self.assertTrue(trapped)

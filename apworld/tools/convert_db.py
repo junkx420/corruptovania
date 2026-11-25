@@ -8,13 +8,17 @@ never by parsing the JSON ourselves. The output is declarative and imports nothi
 
 Output files (see apworld/metroidprime3/data/README.md for the format):
     logic.py      REGIONS, CONNECTIONS, EVENTS, TEMPLATES, NODE_TYPES
-    locations.py  LOCATIONS (99, id = pickup index 1-99), UNPATCHED_LOCATION (index 0, E13)
+    locations.py  LOCATIONS (99, id = pickup index 1-99, escape_requirement E22), UNPATCHED_LOCATION (index 0, E13)
     items.py      ITEMS (AP pool, 99 items incl. Hypermode, one Missile Expansion less, E17), STARTING_ITEMS
     game.py       VICTORY_REQUIREMENT, START_LOCATION, SETTINGS, TRICKS, requirement kind statistics
 
 Dangerous events (E18): every event that occurs negated ("before <event>") gets an escape_requirement (way from its
 event node back to a ship in the state "after X", see EscapeSolver); it is ANDed onto every connection into the event
 node. "before <event>" itself stays in the data and counts as satisfied in the logic.
+
+Dead-end locations (E22): every pickup node gets an escape_requirement too (way back to a ship in the state after the
+pickup and after the events every way there triggers, see attach_location_escapes). It is stored in LOCATIONS and is
+the location's own access rule; ``{"and": []}`` where every state that reaches the node already satisfies it.
 
 The output is deterministic (no set iteration, no timestamps).
 """
@@ -23,8 +27,10 @@ from __future__ import annotations
 
 import argparse
 import collections
+import importlib.util
 import pprint
 from pathlib import Path
+from types import SimpleNamespace
 
 from randovania.game.game_enum import RandovaniaGame
 from randovania.game_description import default_database
@@ -442,6 +448,7 @@ class Converter:
             "items.py": {"ITEMS": items, "STARTING_ITEMS": starting_items},
         }
         attach_escape_requirements(files)
+        attach_location_escapes(files)
         return files
 
 
@@ -536,24 +543,26 @@ def _atoms_no_tpl(req: dict):
 
 
 class EscapeSolver:
-    """escape_requirement of a dangerous event X (E18).
+    """escape_requirement of a node: when a ship is reachable from it (E18 for dangerous events, E22 for pickups).
 
-    State "after X": X is triggered ("before X" false, event X true), the player stands at the event node and owns
-    only what he had when entering it. The requirement says when a ship (teleporter_network node whose
-    ``is_unlocked`` holds) is reachable from there. It is the least fixpoint of "node reachable from the event node"
+    State: the events in ``triggered`` have happened ("before X" false, event X true), the player stands at the
+    node and owns only what he had when entering it. The requirement says when a ship (teleporter_network node whose
+    ``is_unlocked`` holds) is reachable from there. It is the least fixpoint of "node reachable from the start node"
     over DNFs, evaluated symbolically:
-        item / damage         -> atom
+        item / damage         -> atom; an item amount already covered by ``known`` (the starting items) -> satisfied
         trick / misc / version -> constant from SETTINGS (preset: all tricks off). With tricks enabled later the
                                  gate is stricter than necessary, never too loose.
-        before Y (Y != X)     -> satisfied (as everywhere in the logic)
-        event Y               -> atom, unless Y is only reachable after X (with all items, X's node blocked):
-                                 then Y is replaced by its own requirement from the event node (recursively).
+        before Y (Y not triggered) -> satisfied (as everywhere in the logic)
+        event Y               -> atom, unless Y is only reachable after the start node (with all items, the node
+                                 blocked): then Y is replaced by its own requirement from there (recursively).
         "no item", node       -> not satisfied (do not occur)
+    E18 uses ``triggered = {X}`` and no ``known`` (unchanged since T20).
     """
 
-    def __init__(self, logic: dict, settings: dict) -> None:
+    def __init__(self, logic: dict, settings: dict, known: dict[str, int] | None = None) -> None:
         self.logic = logic
         self.settings = settings
+        self.known = dict(known or {})
         self.templates = logic["TEMPLATES"]
         self.targets = []
         for rname, info_region in logic["REGIONS"].items():
@@ -571,23 +580,23 @@ class EscapeSolver:
         have = table.get(name, 0)
         return have < amount if negate else have >= amount
 
-    def to_dnf(self, req: dict, x: str, inlined: set[str], ev_dnf: dict) -> list:
+    def to_dnf(self, req: dict, triggered: frozenset[str], inlined: set[str], ev_dnf: dict) -> list:
         if "and" in req:
             acc = TRUE
             for r in req["and"]:
-                acc = dnf_and(acc, self.to_dnf(r, x, inlined, ev_dnf))
+                acc = dnf_and(acc, self.to_dnf(r, triggered, inlined, ev_dnf))
                 if not acc:
                     break
             return acc
         if "or" in req:
-            return dnf_or(*(self.to_dnf(r, x, inlined, ev_dnf) for r in req["or"]))
+            return dnf_or(*(self.to_dnf(r, triggered, inlined, ev_dnf) for r in req["or"]))
         kind, name, amount, negate = req["type"], req.get("name"), req.get("amount", 1), req.get("negate", False)
         if kind == "template":
-            return self.to_dnf(self.templates[name], x, inlined, ev_dnf)
+            return self.to_dnf(self.templates[name], triggered, inlined, ev_dnf)
         if kind == "event":
             if negate:
-                return FALSE if name == x else TRUE
-            if name == x:
+                return FALSE if name in triggered else TRUE
+            if name in triggered:
                 return TRUE
             if name in inlined:
                 return ev_dnf.get(name, FALSE)
@@ -595,6 +604,8 @@ class EscapeSolver:
         if kind in ("item", "node"):
             if kind == "node" or negate:
                 return FALSE
+            if self.known.get(name, 0) >= amount:
+                return TRUE
             return [{("item", name): amount}]
         if kind in ("trick", "damage") and negate:
             raise ValueError(f"negated {kind} requirement is not supported: {req}")
@@ -604,10 +615,18 @@ class EscapeSolver:
             return TRUE if self.static(kind, name, amount, negate) else FALSE
         raise ValueError(f"Unknown requirement type {kind!r}")
 
-    def solve(self, x: str, node: tuple, inlined: set[str]) -> list:
-        """Worklist fixpoint with delta propagation. Nothing is propagated out of a ship node: every term that
+    def solve(self, triggered: frozenset[str], node: tuple, inlined: set[str]) -> list:
+        """DNF under which a ship is reachable from ``node`` (see the class docstring)."""
+        reach, ev_dnf = self.reach_dnf(node, triggered, inlined)
+        return dnf_or(*(dnf_and(reach[n], self.to_dnf(unlocked, triggered, inlined, ev_dnf))
+                        for n, unlocked in self.targets if n in reach))
+
+    def reach_dnf(self, node: tuple, triggered: frozenset[str], inlined: set[str],
+                  stop_at_ships: bool = True) -> tuple[dict[tuple, list], dict[str, list]]:
+        """Worklist fixpoint with delta propagation: DNF per node reachable from ``node`` and per inlined event.
+        With ``stop_at_ships`` nothing is propagated out of a ship node (other than ``node``): every term that
         passes a ship is implied by a term that already reached it."""
-        target_nodes = {n for n, _ in self.targets}
+        target_nodes = {n for n, _ in self.targets} if stop_at_ships else set()
         reach: dict[tuple, list] = {node: TRUE}
         delta: dict[tuple, list] = {node: TRUE}
         ev_dnf: dict[str, list] = {}
@@ -634,9 +653,9 @@ class EscapeSolver:
         def req_dnf(req: dict) -> list:
             key = id(req)
             if key in dynamic:
-                return self.to_dnf(req, x, inlined, ev_dnf)
+                return self.to_dnf(req, triggered, inlined, ev_dnf)
             if key not in static_cache:
-                static_cache[key] = self.to_dnf(req, x, inlined, ev_dnf)
+                static_cache[key] = self.to_dnf(req, triggered, inlined, ev_dnf)
             return static_cache[key]
 
         queue = [node]
@@ -689,23 +708,22 @@ class EscapeSolver:
                                 gain = dnf_and(reach[n], req_dnf(r))
                                 if gain:
                                     add_event(z, gain)
-        return dnf_or(*(dnf_and(reach[n], self.to_dnf(unlocked, x, inlined, ev_dnf))
-                        for n, unlocked in self.targets if n in reach))
+        return reach, ev_dnf
+
+
+def _simulator_world(files: dict[str, dict]):
+    """playthrough_sim.World on the data generated so far (compiled at call time)."""
+    spec = importlib.util.spec_from_file_location("playthrough_sim", Path(__file__).with_name("playthrough_sim.py"))
+    playthrough_sim = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(playthrough_sim)
+    return playthrough_sim.World(SimpleNamespace(**{k[:-3]: SimpleNamespace(**v) for k, v in files.items()}))
 
 
 def attach_escape_requirements(files: dict[str, dict]) -> None:
     """E18: compute escape_requirement for every dangerous event, store it in EVENTS and AND it onto every
     connection into the event node (marked with ``escape_gate``). Works on the generated data only."""
-    import importlib.util
-    from types import SimpleNamespace
-
-    spec = importlib.util.spec_from_file_location("playthrough_sim", Path(__file__).with_name("playthrough_sim.py"))
-    playthrough_sim = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(playthrough_sim)
-
     logic, game = files["logic.py"], files["game.py"]
-    data = SimpleNamespace(**{k[:-3]: SimpleNamespace(**v) for k, v in files.items()})
-    world = playthrough_sim.World(data)
+    world = _simulator_world(files)
     all_inv = world.all_items()
     _, all_events, _, _ = world.reach(all_inv)
     solver = EscapeSolver(logic, game["SETTINGS"])
@@ -717,7 +735,7 @@ def attach_escape_requirements(files: dict[str, dict]) -> None:
         (node,) = nodes
         _, without_x, _, _ = world.reach(all_inv, blocked_nodes={node}, blocked_events={x})
         inlined = {y for y in all_events if y not in without_x and y != x}
-        escape = dnf_to_requirement(solver.solve(x, node, inlined))
+        escape = dnf_to_requirement(solver.solve(frozenset({x}), node, inlined))
         event["node"] = node
         event["escape_requirement"] = escape
         event["escape_inlined_events"] = sorted(inlined)
@@ -725,6 +743,103 @@ def attach_escape_requirements(files: dict[str, dict]) -> None:
             if tuple(conn["to"]) == node:
                 conn["requirement"] = {"and": [conn["requirement"], escape]}
                 conn["escape_gate"] = x
+
+
+# ---------------------------------------------------------------- escape requirements of pickup nodes (E22)
+def _term_inventory(term: dict, base: dict[str, int], damage: dict) -> dict[str, int]:
+    """Smallest inventory (resource amounts) satisfying an item-only DNF term: ``base`` plus the term's item atoms;
+    damage atoms become Energy Tanks with the same formula as the logic (data README, SETTINGS["damage"])."""
+    inv = dict(base)
+    tanks = 0
+    for (kind, name), amount in term.items():
+        if kind == "item":
+            inv[name] = max(inv.get(name, 0), amount)
+        elif kind == "damage":
+            if damage["reductions"].get(name):
+                raise ValueError(f"damage reductions for {name!r} are not supported by the E22 triviality check")
+            needed = int(amount * damage["strictness"])
+            tanks = max(tanks, (needed - damage["starting_energy"]) // damage["energy_per_tank"] + 1)
+        else:
+            raise ValueError(f"unexpected atom {kind!r} {name!r} in an item-only entry term")
+    if tanks > 0:
+        inv["Energy Tank"] = max(inv.get("Energy Tank", 0), tanks)
+    return inv
+
+
+def attach_location_escapes(files: dict[str, dict]) -> list[int]:
+    """E22: escape_requirement of every pickup node (location 1-99), stored in LOCATIONS. Returns the ids of the
+    locations whose escape_requirement is not trivially satisfied.
+
+    Same solver as E18, state "after the pickup and after all events on the way there": starting at the pickup node,
+    with the events that every way to the node triggers (``escape_triggered_events``: the node is unreachable with
+    all items when the event, and for a database event its node, is blocked) and with events that are only
+    reachable through the pickup node inlined (``escape_inlined_events``, cycle-free). Starting items count as owned.
+    Connections already carry the E18 gates.
+
+    The requirement counts as trivially satisfied (stored as ``{"and": []}``) when every state that reaches the
+    pickup node in the logic satisfies it: for every minimal item set that reaches the node (forward DNF from the
+    start, all events inlined) plus the events that set reaches, the requirement holds. The logic is monotonic
+    ("before X" satisfied), so checking the minimal sets is enough.
+    """
+    logic, game, items = files["logic.py"], files["game.py"], files["items.py"]
+    locations = files["locations.py"]["LOCATIONS"]
+    world = _simulator_world(files)  # compiled now: the E18 gates are part of the connections
+    all_inv = world.all_items()
+    reached, all_events, _, _ = world.reach(all_inv)
+    start_inv, _ = world.inventory(items["STARTING_ITEMS"])
+    damage = game["SETTINGS"]["damage"]
+    solver = EscapeSolver(logic, game["SETTINGS"], known=start_inv)
+    nodes = {loc["id"]: (loc["region"], loc["area"], loc["node"]) for loc in locations}
+    unreachable = sorted(lid for lid, node in nodes.items() if node not in reached)
+    if unreachable:
+        raise ValueError(f"locations unreachable with all items: {unreachable}")
+
+    triggered: dict[int, set[str]] = {lid: set() for lid in nodes}
+    for y in sorted(all_events):
+        event = logic["EVENTS"][y]
+        event_nodes = {tuple(s["node"]) for s in event["sources"]} if event["kind"] == "db" else set()
+        without_y, _, _, _ = world.reach(all_inv, blocked_nodes=event_nodes, blocked_events={y})
+        for lid, node in nodes.items():
+            if node not in without_y:
+                triggered[lid].add(y)
+
+    # minimal item sets per node (forward from the start, every event replaced by its own requirement)
+    entry, _ = solver.reach_dnf(tuple(game["START_LOCATION"]), frozenset(), set(logic["EVENTS"]),
+                                stop_at_ships=False)
+
+    def implied_by_entry(node: tuple, dnf: list) -> bool:
+        rule, _ = world.compile(dnf_to_requirement(dnf))
+        terms = entry.get(node, FALSE)
+        if not terms:
+            raise ValueError(f"entry DNF of {node} is empty, but the node is reachable")
+        for term in terms:
+            inv = _term_inventory(term, start_inv, damage)
+            term_reached, term_events, _, _ = world.reach(inv)
+            if node not in term_reached:
+                raise ValueError(f"entry term {term} does not reach {node} in the simulator")
+            if not rule(inv, term_events, False):
+                return False
+        return True
+
+    nontrivial = []
+    for loc in locations:
+        lid, node = loc["id"], nodes[loc["id"]]
+        _, without_p, _, _ = world.reach(all_inv, blocked_nodes={node})
+        inlined = {y for y in all_events if y not in without_p}
+        if inlined & triggered[lid]:
+            raise ValueError(f"location {lid}: events both triggered on the way and only reachable after it: "
+                             f"{sorted(inlined & triggered[lid])}")
+        dnf = solver.solve(frozenset(triggered[lid]), node, inlined)
+        if not dnf:
+            raise ValueError(f"location {lid} {loc['name']!r}: no way back to a ship even with all items")
+        if dnf == TRUE or implied_by_entry(node, dnf):
+            loc["escape_requirement"] = {"and": []}
+            continue
+        nontrivial.append(lid)
+        loc["escape_requirement"] = dnf_to_requirement(dnf)
+        loc["escape_triggered_events"] = sorted(triggered[lid])
+        loc["escape_inlined_events"] = sorted(inlined)
+    return nontrivial
 
 
 HEADER = "# Generated by apworld/tools/convert_db.py from the Corruptovania prime3 database. Do not edit.\n"
