@@ -17,9 +17,17 @@ Modes of ``World.reach``:
                  requirement (without the escape gate), untriggered dangerous event nodes are not entered but
                  reported as ``hits`` (entering them triggers the event, the caller decides).
 
+Setup (E23, T30): ``World(data, tricks=..., starting_items=...)``. ``tricks`` = {trick name: level 0-5} (default:
+every trick off), used by the logic and by the player's physics alike. ``starting_items`` = item names the player
+starts with (default: data/items.py STARTING_ITEMS); every default starting item left out goes into the pool and one
+Missile Expansion leaves it per item, so the pool stays at 99 (E23).
+
 Usage (from the repo root):
     venv/Scripts/python.exe apworld/tools/playthrough_sim.py [--seeds 100] [--first 0] [--eager 0.5] [-v]
-        [--no-dead-end-rule]
+        [--no-dead-end-rule] [--without "Morph Ball,Space Jump Boots"] [--start "Power Beam,..."]
+        [--tricks "Movement=2,Knowledge=1"] [--trick-level 2] [--usable]
+    venv/Scripts/python.exe apworld/tools/playthrough_sim.py --matrix [--seeds 100]   (check matrix, data/README.md)
+    venv/Scripts/python.exe apworld/tools/playthrough_sim.py --start-table   (sphere 0 per starting-item choice)
 """
 
 from __future__ import annotations
@@ -27,6 +35,7 @@ from __future__ import annotations
 import argparse
 import collections
 import importlib.util
+import itertools
 import math
 import random
 import sys
@@ -36,10 +45,14 @@ from types import ModuleType, SimpleNamespace
 
 DEFAULT_DATA = Path(__file__).resolve().parents[1] / "metroidprime3" / "data"
 GOAL_EVENT = "Aurora Unit 313"
+# E23: removed starting items go into the pool, one of these leaves it per item (the pool stays at 99).
+POOL_FILLER = "Missile Expansion"
+# E23: always kept (the client needs Power Beam > 0, scanning is mandatory); the others can be removed.
+FIXED_STARTING_ITEMS = ("Power Beam", "Combat Visor", "Scan Visor")
 
 
 def load_data(directory: Path = DEFAULT_DATA) -> SimpleNamespace:
-    """Load the generated modules (logic, game, items, locations) from a directory."""
+    """Load the generated modules (logic, game, items, locations and, if present, tricks) from a directory."""
 
     def load(name: str) -> ModuleType:
         spec = importlib.util.spec_from_file_location(f"_mp3data_{name}", directory / f"{name}.py")
@@ -47,7 +60,8 @@ def load_data(directory: Path = DEFAULT_DATA) -> SimpleNamespace:
         spec.loader.exec_module(module)
         return module
 
-    return SimpleNamespace(**{n: load(n) for n in ("logic", "game", "items", "locations")})
+    names = ["logic", "game", "items", "locations"] + (["tricks"] if (directory / "tricks.py").is_file() else [])
+    return SimpleNamespace(**{n: load(n) for n in names})
 
 
 def _true(inv, evs, phys):
@@ -61,12 +75,19 @@ def _false(inv, evs, phys):
 class World:
     """Compiled logic graph. ``data`` has the attributes logic, game, items, locations (modules or namespaces)."""
 
-    def __init__(self, data, tricks: dict[str, int] | None = None, location_escapes: bool = True) -> None:
-        """``location_escapes=False`` ignores the escape_requirement of the locations (logic before E22)."""
+    def __init__(self, data, tricks: dict[str, int] | None = None, location_escapes: bool = True,
+                 starting_items: list[str] | None = None) -> None:
+        """``tricks``: trick levels (default: all off). ``starting_items``: item names (default: the data's starting
+        items; see the module docstring for the pool). ``location_escapes=False`` ignores the escape_requirement of
+        the locations (logic before E22)."""
         self.data = data
         logic, game = data.logic, data.game
         settings = game.SETTINGS
-        self.tricks = dict(settings["trick_level"]["levels"]) if tricks is None else dict(tricks)
+        self.tricks = dict(tricks or {})
+        unknown = sorted(set(self.tricks) - set(game.TRICKS))
+        if unknown:
+            raise ValueError(f"unknown tricks: {unknown}")
+        self.starting, self._pool = self._setup(starting_items)
         self.misc = settings["misc_resources"]
         self.version = settings["version_resources"]
         self.damage = settings["damage"]
@@ -186,12 +207,41 @@ class World:
             self.give(inv, copies, record)
         return inv, copies
 
+    def _setup(self, starting_items: list[str] | None) -> tuple[list[dict], list[dict]]:
+        """Starting item records and the pool (one record per copy) for a choice of starting items (E23)."""
+        items = self.data.items
+        default = list(items.STARTING_ITEMS)
+        pool = [r for r in items.ITEMS for _ in range(r["count"])]
+        if starting_items is None:
+            return default, pool
+        records = {r["name"]: r for r in list(items.ITEMS) + default}
+        unknown = sorted(set(starting_items) - set(records))
+        if unknown:
+            raise ValueError(f"unknown starting items: {unknown}")
+        names = list(dict.fromkeys(starting_items))
+        filler = records[POOL_FILLER]
+        for record in default:
+            if record["name"] not in names:  # removed: into the pool, one filler out
+                pool.append(record)
+                pool.remove(filler)
+        for name in names:
+            if name not in {r["name"] for r in default}:  # a pool item given at the start: filler takes its place
+                pool.remove(records[name])
+                pool.append(filler)
+        return [records[n] for n in names], pool
+
     def pool(self) -> list[dict]:
         """The AP pool, one record per copy."""
-        return [r for r in self.data.items.ITEMS for _ in range(r["count"])]
+        return list(self._pool)
 
     def all_items(self) -> dict:
-        return self.inventory(self.pool() + list(self.data.items.STARTING_ITEMS))[0]
+        return self.inventory(self.pool() + self.starting)[0]
+
+    def sphere0(self) -> list[int]:
+        """Locations the AP logic allows with the starting items alone (empty: the setup cannot start)."""
+        inv, _ = self.inventory(self.starting)
+        reached, evs, _, _ = self.reach(inv)
+        return sorted(self.reachable_locations(reached, inv, evs))
 
     # ------------------------------------------------------------ reachability
     def reach(self, inv: dict, *, logic: bool = True, gated: bool | None = None, start=None, events=(),
@@ -309,7 +359,7 @@ def fill(world: World, rng: random.Random, attempts: int = 20) -> dict[int, dict
     """AP-style random fill: progression items one by one (random order) onto random locations that are reachable
     with all still unplaced progression items + starting items + everything collectable (sweep). Then filler."""
     pool = world.pool()
-    start = list(world.data.items.STARTING_ITEMS)
+    start = list(world.starting)
     progression = [r for r in pool if r["progression"]]
     filler = [r for r in pool if not r["progression"]]
     locations = sorted(world.loc_node)
@@ -353,7 +403,7 @@ def play(world: World, placement: dict[int, dict], rng: random.Random | None = N
     stands at its node. He keeps playing after the goal (to see whether locations got lost) and stops when nothing
     is left. Won = goal event triggered. ``trapped`` = no ship is reachable from where he ended.
     """
-    inv, copies = world.inventory(world.data.items.STARTING_ITEMS)
+    inv, copies = world.inventory(world.starting)
     evs: set[str] = set()
     collected: set[int] = set()
     pos = world.start
@@ -424,21 +474,109 @@ def simulate(world: World, seeds, verbose: bool = False, eager: float = 0.0, dea
     return {"summary": dict(summary), "failures": failures}
 
 
+# ---------------------------------------------------------------- check matrix (T30, data/README.md)
+def usable_tricks(data) -> dict[str, int]:
+    """USABLE_TRICKS of data/tricks.py at their recommended level (E23)."""
+    return dict(data.tricks.USABLE_TRICKS)
+
+
+def matrix_variants(data) -> list[tuple[str, dict]]:
+    """The check matrix: (label, World keyword arguments)."""
+    default = [r["name"] for r in data.items.STARTING_ITEMS]
+
+    def without(*names: str) -> list[str]:
+        return [n for n in default if n not in names]
+
+    return [
+        ("Standard", {}),
+        ("without Morph Ball", {"starting_items": without("Morph Ball")}),
+        ("without Morph Ball Bombs", {"starting_items": without("Morph Ball Bombs")}),
+        ("without Space Jump Boots", {"starting_items": without("Space Jump Boots")}),
+        ("without Charge Beam", {"starting_items": without("Charge Beam")}),
+        ("only Power Beam + Combat/Scan Visor", {"starting_items": list(FIXED_STARTING_ITEMS)}),
+        ("usable tricks at the recommended level", {"tricks": usable_tricks(data)}),
+    ]
+
+
+def run_variant(data, kwargs: dict, seeds, eager: float = 0.5) -> dict:
+    """Sphere 0 and the simulator summary of one setup (``simulate`` skipped when sphere 0 is empty)."""
+    world = World(data, **kwargs)
+    sphere0 = world.sphere0()
+    result = {"sphere0": sphere0, "summary": {}, "failures": []}
+    if sphere0:
+        result.update(simulate(world, seeds, eager=eager))
+    return result
+
+
+def start_table(data) -> list[tuple[tuple[str, ...], list[int]]]:
+    """Sphere 0 for every choice of the removable starting items (E23): (removed items, locations)."""
+    removable = [r["name"] for r in data.items.STARTING_ITEMS if r["name"] not in FIXED_STARTING_ITEMS]
+    rows = []
+    for k in range(len(removable) + 1):
+        for removed in itertools.combinations(removable, k):
+            names = [r["name"] for r in data.items.STARTING_ITEMS if r["name"] not in removed]
+            rows.append((removed, World(data, starting_items=names).sphere0()))
+    return rows
+
+
+def _parse_tricks(text: str) -> dict[str, int]:
+    out = {}
+    for part in filter(None, (p.strip() for p in text.split(","))):
+        name, _, level = part.rpartition("=")
+        out[name.strip()] = int(level)
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA)
     parser.add_argument("--seeds", type=int, default=100)
     parser.add_argument("--first", type=int, default=0)
-    parser.add_argument("--eager", type=float, default=0.0,
-                        help="probability to trigger an allowed dangerous event before collecting (0..1)")
+    parser.add_argument("--eager", type=float,
+                        help="probability to trigger an allowed dangerous event before collecting (0..1; "
+                             "default 0, with --matrix 0.5)")
     parser.add_argument("--no-dead-end-rule", action="store_true",
                         help="counter-check: fill and player ignore the locations' escape_requirement (before E22)")
+    parser.add_argument("--start", help="comma separated starting items (default: the data's starting items)")
+    parser.add_argument("--without", help="comma separated default starting items to remove")
+    parser.add_argument("--tricks", default="", help='trick levels, e.g. "Movement=2,Knowledge=1"')
+    parser.add_argument("--trick-level", type=int, help="the same level for every trick")
+    parser.add_argument("--usable", action="store_true", help="USABLE_TRICKS of data/tricks.py")
+    parser.add_argument("--matrix", action="store_true", help="run the check matrix (eager 0.5 unless --eager)")
+    parser.add_argument("--start-table", action="store_true", help="sphere 0 for every starting-item choice")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
+    data = load_data(args.data)
+    seeds = range(args.first, args.first + args.seeds)
+    if args.start_table:
+        for removed, sphere0 in start_table(data):
+            print(f"without {', '.join(removed) or '-':55} sphere 0: {len(sphere0):>2} {sphere0}")
+        return
+    if args.matrix:
+        failed = False
+        for label, kwargs in matrix_variants(data):
+            t0 = time.time()
+            result = run_variant(data, kwargs, seeds, eager=0.5 if args.eager is None else args.eager)
+            summary = result["summary"]
+            ok = bool(result["sphere0"]) and summary.get("won") == len(seeds) and summary.get("trapped") == 0                 and summary.get("all_99_collected") == len(seeds)
+            failed |= bool(result["sphere0"]) and not ok
+            print(f"{label:40} sphere 0: {len(result['sphere0']):>2}  {summary}  {time.time() - t0:.0f}s", flush=True)
+        sys.exit(1 if failed else 0)
+    tricks = {t: args.trick_level for t in data.game.TRICKS} if args.trick_level is not None else {}
+    if args.usable:
+        tricks.update(usable_tricks(data))
+    tricks.update(_parse_tricks(args.tricks))
+    start = None
+    if args.start:
+        start = [n.strip() for n in args.start.split(",") if n.strip()]
+    if args.without:
+        drop = {n.strip() for n in args.without.split(",")}
+        start = [n for n in (start or [r["name"] for r in data.items.STARTING_ITEMS]) if n not in drop]
     rule = not args.no_dead_end_rule
-    world = World(load_data(args.data), location_escapes=rule)
+    world = World(data, tricks=tricks, location_escapes=rule, starting_items=start)
+    print(f"sphere 0: {world.sphere0()}")
     t0 = time.time()
-    result = simulate(world, range(args.first, args.first + args.seeds), args.verbose, args.eager, rule)
+    result = simulate(world, seeds, args.verbose, args.eager or 0.0, rule)
     print(result["summary"], f"{time.time() - t0:.1f}s")
     for seed, why in result["failures"]:
         print("FAILED", seed, why)

@@ -1,4 +1,4 @@
-"""Acceptance tests for apworld/tools/convert_db.py (T03, T20, T25) and apworld/tools/playthrough_sim.py.
+"""Acceptance tests for apworld/tools/convert_db.py (T03, T20, T25, T30) and apworld/tools/playthrough_sim.py.
 
 Run from the repo root:
     venv/Scripts/python.exe -m pytest apworld/tools/test_convert_db.py -s
@@ -25,7 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TOOLS_DIR = Path(__file__).resolve().parent
 CONVERTER = TOOLS_DIR / "convert_db.py"
 COMMITTED_DATA = REPO_ROOT / "apworld" / "metroidprime3" / "data"
-GENERATED_FILES = ("game.py", "items.py", "locations.py", "logic.py")
+GENERATED_FILES = ("game.py", "items.py", "locations.py", "logic.py", "tricks.py")
 
 # Every requirement "type" value the generated data may contain. A new one must fail the tests.
 KNOWN_REQUIREMENT_TYPES = frozenset(
@@ -48,12 +48,14 @@ playthrough_sim = _load_simulator()
 
 
 # ---------------------------------------------------------------- helpers
-def _run_converter(out_dir: Path, hash_seed: str) -> None:
+def _start_converter(out_dir: Path, hash_seed: str) -> subprocess.Popen:
     env = {**os.environ, "PYTHONHASHSEED": hash_seed}
-    subprocess.run(
-        [sys.executable, str(CONVERTER), "--out", str(out_dir)],
-        cwd=REPO_ROOT, env=env, check=True, timeout=600,
-    )
+    return subprocess.Popen([sys.executable, str(CONVERTER), "--out", str(out_dir)], cwd=REPO_ROOT, env=env)
+
+
+def _run_converter(out_dir: Path, hash_seed: str) -> None:
+    process = _start_converter(out_dir, hash_seed)
+    assert process.wait(timeout=900) == 0
 
 
 def _load(path: Path) -> ModuleType:
@@ -72,21 +74,27 @@ class Data:
         self.game = _load(directory / "game.py")
         self.items = _load(directory / "items.py")
         self.locations = _load(directory / "locations.py")
+        self.tricks = _load(directory / "tricks.py")
 
 
 # ---------------------------------------------------------------- fixtures
 @pytest.fixture(scope="session")
-def out_a(tmp_path_factory) -> Path:
-    path = tmp_path_factory.mktemp("convert_a")
-    _run_converter(path, "1")
-    return path
+def outputs(tmp_path_factory) -> tuple[Path, Path]:
+    """The converter run twice in parallel with different PYTHONHASHSEED values."""
+    paths = (tmp_path_factory.mktemp("convert_a"), tmp_path_factory.mktemp("convert_b"))
+    processes = [_start_converter(path, seed) for path, seed in zip(paths, ("1", "12345"))]
+    assert [p.wait(timeout=900) for p in processes] == [0, 0]
+    return paths
 
 
 @pytest.fixture(scope="session")
-def out_b(tmp_path_factory) -> Path:
-    path = tmp_path_factory.mktemp("convert_b")
-    _run_converter(path, "12345")
-    return path
+def out_a(outputs) -> Path:
+    return outputs[0]
+
+
+@pytest.fixture(scope="session")
+def out_b(outputs) -> Path:
+    return outputs[1]
 
 
 @pytest.fixture(scope="session")
@@ -516,12 +524,20 @@ def test_simulator_detects_dead_ends_without_location_rule(world):
 # Control values from randovania/games/prime3/logic_database/* - Seed.txt: the only way out of each Leviathan core
 # after its pickup ("Use Hyper Ball" = Hyper Ball + Hypermode, "Use Grapple Voltage" = Grapple Lasso + Voltage).
 SEED_ESCAPES = {
-    98: ({"Hyper Ball": 1, "HyperModeTank": 1, "Energy Tank": 1}, "Hyper Ball"),
+    98: ({"Hyper Ball": 1, "HyperModeTank": 1, "Energy Tank": 1, "Morph Ball": 1}, "Hyper Ball"),
     97: ({"Hyper Missile": 1, "Missile": 4}, "Hyper Missile"),
     99: ({"Hyper Grapple": 1, "Grapple Voltage": 1, "Grapple Lasso": 1}, "Hyper Grapple"),
 }
-# Every location whose escape_requirement is not implied by reaching it (documented in data/README.md).
-NONTRIVIAL_LOCATION_ESCAPES = [26, 28, 29, 35, 56, 57, 58, 59, 60, 61, 62, 63, 64, 75, 76, 84, 86, 94, 95, 97, 98, 99]
+# Locations whose escape_requirement is not implied by reaching them with the default starting items and no tricks
+# (T25, documented in data/README.md): only these can behave differently from "no rule" in the default setup.
+DEFAULT_NONTRIVIAL_LOCATION_ESCAPES = [26, 28, 29, 35, 56, 57, 58, 59, 60, 61, 62, 63, 64, 75, 76, 84, 86, 94, 95, 97,
+                                       98, 99]
+# Every location whose escape_requirement is stored: not implied by reaching the node for some starting inventory or
+# some trick setting up to TRICK_COVERAGE (T30).
+NONTRIVIAL_LOCATION_ESCAPES = [2, 3, 12, 14, 15, 17, 18, 19, 20, 21, 22, 23, 24, 26, 28, 29, 31, 32, 33, 34, 35, 37,
+                               38, 39, 40, 42, 44, 45, 46, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
+                               68, 69, 70, 71, 72, 74, 75, 76, 77, 78, 79, 80, 81, 83, 84, 85, 86, 87, 90, 93, 94, 95,
+                               96, 97, 98, 99]
 # Locations whose escape needs their own vanilla item: that item can no longer be placed there (accepted, E22).
 SELF_LOCKED_VANILLA = {63: "Boost Ball", 64: "Spider Ball", 76: "Hazard Shield", 95: "Nova Beam",
                        97: "Hyper Missile", 98: "Hyper Ball", 99: "Hyper Grapple"}
@@ -556,20 +572,87 @@ def test_every_location_has_an_escape_requirement(data, world, capsys):
     nontrivial = []
     for loc in data.locations.LOCATIONS:
         req = loc["escape_requirement"]
-        _event_atoms(req, set())  # only item/event/damage leaves, no "before"
+        _event_atoms(req, set())  # only item/event/damage leaves, no "before", no tricks
         if req == {"and": []}:
-            assert "escape_triggered_events" not in loc and "escape_inlined_events" not in loc
+            assert not {"escape_triggered_events", "escape_assumed_events", "escape_inlined_events"} & set(loc)
             continue
         nontrivial.append(loc["id"])
-        assert loc["escape_triggered_events"] == sorted(loc["escape_triggered_events"])
-        assert loc["escape_inlined_events"] == sorted(loc["escape_inlined_events"])
+        for key in ("escape_triggered_events", "escape_assumed_events", "escape_inlined_events"):
+            assert loc[key] == sorted(loc[key])
+        assert set(loc["escape_assumed_events"]) <= set(loc["escape_triggered_events"])
         assert world.location_ok(loc["id"], full, events), f"{loc['name']}: no escape even with all items"
-        # starting items are owned anyway and never part of the requirement
-        start = {r for item in data.items.STARTING_ITEMS for r, _ in item["stages"][0]}
-        assert not any(start & set(term) for term in _terms(req)), loc["name"]
     with capsys.disabled():
         print("\n" + "\n".join(location_escape_report(data)))
     assert nontrivial == NONTRIVIAL_LOCATION_ESCAPES
+
+
+def test_starting_items_are_normal_item_leaves(data, world):
+    """E23: no rule assumes a starting item. Control: with every item but Morph Ball Bombs, Valhalla MedLab Alpha
+    (location 15) is reachable but cannot be left (before T30 its rule was trivial: the bombs counted as owned)."""
+    start = {r for item in data.items.STARTING_ITEMS for r, _ in item["stages"][0]}
+    used = set()
+    for loc in data.locations.LOCATIONS:
+        for term in _terms(loc["escape_requirement"]):
+            used |= start & set(term)
+    assert {"Morph Ball", "Morph Ball Bomb", "Space Jump Boots", "Charge Beam"} <= used
+    inv = {**world.all_items(), "Morph Ball Bomb": 0}
+    reached, events, _, _ = world.reach(inv)
+    assert [lid for lid in sorted(world.loc_node) if world.loc_node[lid] in reached
+            and not world.location_ok(lid, inv, events)] == [15]
+
+
+def test_default_setup_keeps_the_t25_rules(data, world):
+    """With the default starting items and no tricks the location rules behave exactly as in T25: only the 22 T25
+    locations have a rule that is not implied by reaching their node (exact check over the minimal entry sets)."""
+    convert_db = _load(CONVERTER)
+    logic = {k: getattr(data.logic, k) for k in ("REGIONS", "CONNECTIONS", "EVENTS", "TEMPLATES")}
+    start_inv, _ = world.inventory(data.items.STARTING_ITEMS)
+    solver = convert_db.EscapeSolver(logic, data.game.SETTINGS, known=start_inv)
+    entry, _ = solver.reach_dnf(tuple(data.game.START_LOCATION), frozenset(), set(data.logic.EVENTS),
+                                stop_at_ships=False)
+    not_implied = []
+    for loc in data.locations.LOCATIONS:
+        node = world.loc_node[loc["id"]]
+        for term in entry[node]:
+            inv = convert_db._term_inventory(term, start_inv, data.game.SETTINGS["damage"])
+            reached, events, _, _ = world.reach(inv)
+            assert node in reached
+            if not world.location_ok(loc["id"], inv, events):
+                not_implied.append(loc["id"])
+                break
+    assert not_implied == DEFAULT_NONTRIVIAL_LOCATION_ESCAPES
+
+
+def _random_states(world, start: list[dict], count: int, seed: int) -> list[dict]:
+    progression = [r for r in world.pool() if r["progression"]]
+    rng = random.Random(seed)
+    return [world.inventory(start + [r for r in progression if rng.random() < p])[0]
+            for p in [0.2 + 0.8 * rng.random() for _ in range(count)]]
+
+
+@pytest.mark.parametrize("variant", ["no tricks", "trick coverage"])
+def test_location_rules_hold_for_every_setup(data, variant):
+    """Independent of the converter's solver (E23): for the default starting items, without one removable starting
+    item each, with only Power Beam + Combat/Scan Visor, and without tricks or with every trick at TRICK_COVERAGE:
+    wherever the logic allows a location, a ship is physically reachable from its pickup node (the player may use
+    the same tricks). Before T30 this failed without Morph Ball Bombs (15, 55, 79, 80, 81) and with tricks
+    (17, 67, 77, 83, 87, 90)."""
+    tricks = dict(data.tricks.TRICK_COVERAGE) if variant == "trick coverage" else {}
+    world = playthrough_sim.World(data, tricks=tricks)
+    default = list(data.items.STARTING_ITEMS)
+    starts = [default, [r for r in default if r["name"] in playthrough_sim.FIXED_STARTING_ITEMS]]
+    starts += [[r for r in default if r["name"] != drop]
+               for drop in ("Charge Beam", "Space Jump Boots", "Morph Ball", "Morph Ball Bombs")]
+    stranded, checked = [], 0
+    for k, start in enumerate(starts):
+        for inv in _random_states(world, start, 40, k):
+            reached, events, _, _ = world.reach(inv)
+            for lid in sorted(world.reachable_locations(reached, inv, events)):
+                checked += 1
+                if not world.ship_reachable(world.loc_node[lid], inv, events):
+                    stranded.append((lid, k))
+    assert checked > 3000
+    assert stranded == []
 
 
 def test_location_escape_control_values(data, world):
@@ -592,7 +675,8 @@ def test_location_escape_control_values(data, world):
 
 def test_location_escapes_are_cycle_free(data, world):
     """No escape_requirement uses an event that is only reachable through its own pickup node, or one that every
-    way to the node already triggers (those count as satisfied)."""
+    way to the node triggers even with tricks (those count as satisfied). Events that only the ways without tricks
+    trigger stay event leaves (they are reachable before the node)."""
     full = world.all_items()
     _, all_events, _, _ = world.reach(full)
     for loc in data.locations.LOCATIONS:
@@ -602,7 +686,7 @@ def test_location_escapes_are_cycle_free(data, world):
         node = world.loc_node[loc["id"]]
         _, without, _, _ = world.reach(full, blocked_nodes={node})
         assert not {y for y in atoms if y in all_events and y not in without}, loc["name"]
-        assert not atoms & set(loc["escape_triggered_events"]), loc["name"]
+        assert not atoms & set(loc["escape_assumed_events"]), loc["name"]
 
 
 def _inventories(world, count: int, seed: int) -> list[dict]:
@@ -645,7 +729,7 @@ def test_self_locked_vanilla_items(data, world, converter):
     records = {r["name"]: r for r in data.items.ITEMS}
     full = world.all_items()
     locked = {}
-    for lid in NONTRIVIAL_LOCATION_ESCAPES:
+    for lid in DEFAULT_NONTRIVIAL_LOCATION_ESCAPES:
         name = vanilla.get(lid)
         if name is None:
             continue  # expansion or Energy Cell
@@ -654,6 +738,132 @@ def test_self_locked_vanilla_items(data, world, converter):
         if not world.location_ok(lid, inv, world.reach(inv)[1]):
             locked[lid] = name
     assert locked == SELF_LOCKED_VANILLA
+
+
+# ---------------------------------------------------------------- 7c. tricks (E23, T30)
+def _trick_leaves(req: dict, out: collections.Counter) -> collections.Counter:
+    if "and" in req or "or" in req:
+        for sub in req.get("and", []) + req.get("or", []):
+            _trick_leaves(sub, out)
+    elif req["type"] == "trick":
+        out[(req["name"], req["amount"])] += 1
+    return out
+
+
+def test_trick_leaves_stay_in_the_normal_trees(data):
+    """Tricks are evaluated by the APWorld: they stay in connections, templates and event sources, never in an
+    escape requirement (those are computed without tricks)."""
+    leaves = collections.Counter()
+    for conn in data.logic.CONNECTIONS:
+        _trick_leaves(conn["requirement"], leaves)
+        if conn.get("escape_gate"):
+            assert not _trick_leaves(conn["requirement"]["and"][1], collections.Counter())
+    for tpl in data.logic.TEMPLATES.values():
+        _trick_leaves(tpl, leaves)
+    for event in data.logic.EVENTS.values():
+        for src in event["sources"]:
+            _trick_leaves(src["requirement"], leaves)
+        assert not _trick_leaves(event.get("escape_requirement", {"and": []}), collections.Counter())
+    for loc in data.locations.LOCATIONS:
+        assert not _trick_leaves(loc["escape_requirement"], collections.Counter())
+    assert {name for name, _ in leaves} == set(data.game.TRICKS)
+    report = data.tricks.TRICK_REPORT
+    assert {(name, lv): n for name, r in report.items() for lv, n in r["uses"].items() if n} == dict(leaves)
+
+
+def test_trick_report_and_usable_tricks(data, capsys):
+    tricks = data.tricks
+    report = tricks.TRICK_REPORT
+    assert list(report) == list(data.game.TRICKS)
+    assert tricks.TRICK_COVERAGE == {name: 5 for name in data.game.TRICKS}
+    assert tricks.USABLE_TRICKS == {name: r["usable_level"] for name, r in report.items() if r["usable_level"]}
+    for name, level in tricks.USABLE_TRICKS.items():
+        r = report[name]
+        assert 1 <= level <= tricks.USABLE_MAX_LEVEL and level in r["requirements"], name
+        assert sum(n for lv, n in r["requirements"].items() if lv <= level) >= 3, name
+        assert r["earlier_locations"][level], name
+        assert r["with_unsupported"] == 0, name
+    for name in ("Single Room Out of Bounds", "Fall Respawn Skip", "Hazards without Hazard Shield"):
+        assert report[name]["usable_level"] == 0 and report[name]["reason"].startswith("excluded"), name
+    # T20: the dangerous event "Gel Processing Site Out of Bounds" needs two tricks (OoB + Bomb Jump)
+    assert tricks.COMBINED_REPORT["coverage"]["new_events"] == ["Gel Processing Site Out of Bounds"]
+    assert tricks.COMBINED_REPORT["usable"]["new_events"] == []
+    assert tricks.COMBINED_REPORT["usable"]["tricks"] == tricks.USABLE_TRICKS
+    with capsys.disabled():
+        print("\nUSABLE_TRICKS:", tricks.USABLE_TRICKS)
+
+
+def test_simulator_starting_items_keep_the_pool_at_99(data):
+    """E23 in the simulator: a removed starting item goes into the pool, one Missile Expansion leaves it."""
+    default = [r["name"] for r in data.items.STARTING_ITEMS]
+    base = playthrough_sim.World(data)
+    assert [r["name"] for r in base.starting] == default
+    minimal = playthrough_sim.World(data, starting_items=list(playthrough_sim.FIXED_STARTING_ITEMS))
+    assert len(minimal.pool()) == len(base.pool()) == 99
+    moved = collections.Counter(r["name"] for r in minimal.pool()) - collections.Counter(r["name"] for r in base.pool())
+    assert moved == collections.Counter(n for n in default if n not in playthrough_sim.FIXED_STARTING_ITEMS)
+    expansions = lambda w: sum(r["name"] == "Missile Expansion" for r in w.pool())  # noqa: E731
+    assert expansions(base) - expansions(minimal) == 4
+    full, fewer = base.all_items(), minimal.all_items()
+    assert {k: v for k, v in fewer.items() if k != "Missile"} == {k: v for k, v in full.items() if k != "Missile"}
+    assert full["Missile"] - fewer["Missile"] == 4 * 5  # four Missile Expansions (5 each) left the pool
+    with pytest.raises(ValueError):
+        playthrough_sim.World(data, tricks={"No Such Trick": 1})
+
+
+# Check matrix (data/README.md): every starting-item choice can start (sphere 0 never empty), see start_table.
+MATRIX_SEEDS = range(40)  # data/README.md has seeds 0-99 (CLI --matrix); the test keeps the run short
+
+
+def _known_vaccine_reentry(result: dict) -> bool:
+    """The E18 limitation found by the check matrix (data/README.md): after "Aurora Chamber (Elysia) Vaccine" the
+    Main Docking Bay door needs Plasma Beam + Ghor, while the logic still counts "before Vaccine" as satisfied, so
+    the rest of SkyTown, Elysia - Main can be out of reach. The player is never trapped."""
+    elysia_main = set(range(53, 66))
+    return ("Aurora Chamber (Elysia) Vaccine" in result["triggered"] and not result["trapped"]
+            and bool(elysia_main & set(result["missing"])))
+
+
+def test_start_table_never_empty(data):
+    rows = playthrough_sim.start_table(data)
+    assert len(rows) == 16
+    assert all(sphere0 for _, sphere0 in rows)
+    assert rows[0] == ((), [4, 11, 17])
+    assert all(set(sphere0) >= {4, 11} for _, sphere0 in rows)
+
+
+@pytest.mark.parametrize("variant", ["without Morph Ball", "without Morph Ball Bombs", "without Space Jump Boots",
+                                     "without Charge Beam", "only Power Beam + Combat/Scan Visor",
+                                     "usable tricks at the recommended level"])
+def test_check_matrix(data, variant, capsys):
+    """Fill + logic-following player per setup (E23): every filled seed is won with 99/99 locations, or (rarely)
+    hits the known Vaccine re-entry limitation; the player is never trapped."""
+    kwargs = dict(playthrough_sim.matrix_variants(data))[variant]
+    seeds = MATRIX_SEEDS if variant != "only Power Beam + Combat/Scan Visor" else range(20)
+    world = playthrough_sim.World(data, **kwargs)
+    assert world.sphere0()
+    won = vaccine = fill_failed = 0
+    for seed in seeds:
+        rng = random.Random(seed)
+        placement = playthrough_sim.fill(world, rng)
+        if placement is None:
+            fill_failed += 1
+            continue
+        result = playthrough_sim.play(world, placement, rng, 0.5)
+        assert not result["trapped"], (seed, result["end"])
+        if result["won"]:
+            assert result["collected"] == 99, (seed, result["missing"])
+            won += 1
+        else:
+            assert _known_vaccine_reentry(result), (seed, result)
+            vaccine += 1
+    with capsys.disabled():
+        print(f"\n{variant}: won {won}, Vaccine re-entry {vaccine}, fill failed {fill_failed} of {len(seeds)}")
+    assert vaccine <= len(seeds) // 20
+    if variant != "only Power Beam + Combat/Scan Visor":
+        assert fill_failed == 0
+    else:
+        assert won > 0
 
 
 # ---------------------------------------------------------------- 8. no randovania import

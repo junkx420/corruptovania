@@ -14,18 +14,24 @@ from test.general import gen_steps, setup_solo_multiworld
 from worlds.AutoWorld import call_all
 
 from .. import MP3World
+from ..data import tricks as trick_data
 from ..items import RECORDS
 from ..locations import pickup_index
 from . import load_playthrough_sim
+from .test_logic import multiworld_with_tricks
 
 SEEDS = range(1, 21)
 FOREIGN_ITEM = {"name": "Foreign item", "stages": [[]]}  # an item of another world gives nothing locally
 
 
-def generate(seed: int, location_rules: bool = True) -> MultiWorld:
+def generate(seed: int, location_rules: bool = True, tricks: dict | None = None) -> MultiWorld:
     """The generation steps of Archipelago's Main.py up to progression balancing, without output.
-    ``location_rules=False`` drops the locations' escape rules before the fill (logic before E22, control)."""
-    multiworld = setup_solo_multiworld(MP3World, gen_steps, seed)
+    ``location_rules=False`` drops the locations' escape rules before the fill (logic before E22, control).
+    ``tricks``: the slot's trick levels (E23; T31 passes them from the options)."""
+    if tricks:
+        multiworld = multiworld_with_tricks(tricks, seed)
+    else:
+        multiworld = setup_solo_multiworld(MP3World, gen_steps, seed)
     if not location_rules:
         for location in multiworld.get_locations(1):
             if location.address is not None:
@@ -60,6 +66,25 @@ class TestPlaythrough(unittest.TestCase):
                 self.assertTrue(multiworld.can_beat_game(multiworld.get_all_state()))
                 placement = ap_placement(multiworld, 1)
                 self.assertEqual(sorted(placement), list(range(1, 100)))
+                for eager in (0.0, 0.5):
+                    result = sim.play(world, placement, random.Random(seed), eager)
+                    self.assertTrue(result["won"], (seed, eager, result))
+                    self.assertEqual(result["collected"], 99, (seed, eager, result["missing"]))
+                    self.assertFalse(result["trapped"], (seed, eager, result["end"]))
+
+    def test_logic_following_player_wins_ap_seeds_with_usable_tricks(self) -> None:
+        """E23 (T30): Archipelago's fill with USABLE_TRICKS at the recommended level; the simulator's player uses the
+        same tricks (logic and physics) and wins with 99/99 locations, never trapped."""
+        sim = load_playthrough_sim()
+        if sim is None:
+            self.skipTest("apworld/tools/playthrough_sim.py not found")
+        tricks = dict(trick_data.USABLE_TRICKS)
+        world = sim.World(sim.load_data(), tricks=tricks)
+        for seed in SEEDS:
+            with self.subTest(seed=seed):
+                multiworld = generate(seed, tricks=tricks)
+                self.assertTrue(multiworld.can_beat_game(multiworld.get_all_state()))
+                placement = ap_placement(multiworld, 1)
                 for eager in (0.0, 0.5):
                     result = sim.play(world, placement, random.Random(seed), eager)
                     self.assertTrue(result["won"], (seed, eager, result))

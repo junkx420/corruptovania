@@ -4,16 +4,20 @@ Connections become entrances (several connections between the same two nodes are
 become event locations with a locked event item, pickup nodes hold the 99 AP locations. A location's access rule is
 its ``escape_requirement`` from the data (E22: the way back from a dead end; ``{"and": []}`` = no rule).
 
-Nodes and event sources that cannot be reached even with every item (no tricks in the MVP) are left out, so that
+Nodes and event sources that cannot be reached even with every item (and the slot's tricks) are left out, so that
 every created region and location is reachable with all items (Archipelago's general reachability test). The logic
 is monotonic once "before event X" counts as satisfied (E18), so leaving them out changes nothing.
+
+Tricks (E23, T30): ``create_regions(world, tricks)`` takes the slot's trick levels {trick name: 0-5} (default: every
+trick off, the behaviour before T30); the trick leaves of the requirement trees are evaluated with them. Offer only
+data/tricks.py USABLE_TRICKS (data/README.md "Tricks").
 """
 
 from __future__ import annotations
 
 import functools
 from collections import Counter
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Mapping, NamedTuple
 
 from BaseClasses import ItemClassification, Region
 
@@ -21,7 +25,7 @@ from .data import game as game_data
 from .data import logic as logic_data
 from .items import GAME_NAME, MP3Item, RECORDS, pool_names, starting_names
 from .locations import LOCATIONS, MP3Location, location_name_to_id, node_of
-from .rules import NEVER, Rule, RuleCompiler, StaticState
+from .rules import NEVER, Rule, RuleCompiler, StaticState, trick_levels
 
 if TYPE_CHECKING:
     from . import MP3World
@@ -77,10 +81,18 @@ class Graph(NamedTuple):
     events: frozenset[str]
 
 
-@functools.lru_cache(maxsize=1)
-def reachable_graph() -> Graph:
-    """Least fixpoint of nodes and events with every item (and no tricks)."""
-    compiler = RuleCompiler(player=0)
+def _tricks_key(tricks: Mapping[str, int] | None) -> tuple[tuple[str, int], ...]:
+    return tuple(sorted((name, level) for name, level in trick_levels(tricks).items() if level > 0))
+
+
+def reachable_graph(tricks: Mapping[str, int] | None = None) -> Graph:
+    """Least fixpoint of nodes and events with every item and the given trick levels (default: no tricks)."""
+    return _reachable_graph(_tricks_key(tricks))
+
+
+@functools.lru_cache(maxsize=8)
+def _reachable_graph(tricks: tuple[tuple[str, int], ...]) -> Graph:
+    compiler = RuleCompiler(player=0, tricks=dict(tricks))
     conn_rules = {key: compiler._or([compiler.compile(r) for r in reqs]) for key, reqs in CONNECTIONS.items()}
     source_rules = [(k, src, compiler.compile(src.requirement)) for k, src in enumerate(EVENT_SOURCES)]
     state = StaticState(all_items_counts())
@@ -108,10 +120,11 @@ def all_nodes() -> list[Node]:
             for n in area["nodes"]]
 
 
-def create_regions(world: "MP3World") -> None:
+def create_regions(world: "MP3World", tricks: Mapping[str, int] | None = None) -> None:
+    """Regions, entrances, locations and event locations of one slot; ``tricks`` = its trick levels (E23)."""
     multiworld, player = world.multiworld, world.player
-    graph = reachable_graph()
-    compiler = RuleCompiler(player)
+    graph = reachable_graph(tricks)
+    compiler = RuleCompiler(player, tricks)
 
     menu = Region(world.origin_region_name, player, multiworld)
     multiworld.regions.append(menu)

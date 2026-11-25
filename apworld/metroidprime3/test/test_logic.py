@@ -1,17 +1,45 @@
-"""Rule evaluation, reachability with all items, escape gates (E18), dead-end locations (E22) and a cross-check
-against playthrough_sim."""
+"""Rule evaluation, reachability with all items, escape gates (E18), dead-end locations (E22), trick levels as a
+parameter (E23, T30) and a cross-check against playthrough_sim."""
 
+import functools
 import random
+import sys
 import unittest
+from unittest import mock
 
-from BaseClasses import CollectionState
+from BaseClasses import CollectionState, MultiWorld
+from test.general import gen_steps, setup_solo_multiworld
 
+from .. import MP3World
+from .. import regions as regions_module
+from ..data import game as game_data
 from ..data import locations as location_data
 from ..data import logic as logic_data
+from ..data import tricks as trick_data
 from ..items import BASE_ID, RECORDS, pool_names, starting_names
 from ..regions import GOAL_EVENT, node_name, reachable_graph
 from ..rules import ALWAYS, NEVER, RuleCompiler, StaticState
 from . import MP3TestBase, load_playthrough_sim
+
+# Locations whose rule is not implied by reaching their node with the default starting items and no tricks (T25).
+DEFAULT_RULE_LOCATIONS = {26, 28, 29, 35, 56, 57, 58, 59, 60, 61, 62, 63, 64, 75, 76, 84, 86, 94, 95, 97, 98, 99}
+
+
+def multiworld_with_tricks(tricks: dict, seed: int | None = None) -> MultiWorld:
+    """A solo multiworld up to pre_fill whose regions use ``tricks`` (what T31's options will pass)."""
+    module = sys.modules[MP3World.__module__]
+    patched = functools.partial(regions_module.create_regions, tricks=tricks)
+    with mock.patch.object(module, "create_regions", patched):
+        return setup_solo_multiworld(MP3World, gen_steps, seed)
+
+
+def state_with(multiworld: MultiWorld, player: int, names) -> CollectionState:
+    state = CollectionState(multiworld)
+    world = multiworld.worlds[player]
+    for name in names:
+        state.collect(world.create_item(name), prevent_sweep=True)
+    state.sweep_for_advancements()  # only events can be swept: real locations are empty
+    return state
 
 
 def item(name, amount=1, negate=False):
@@ -40,8 +68,31 @@ class TestRules(unittest.TestCase):
         self.check(req, {}, False)
         self.check(req, {}, True, events={"Meta Ridley"})
 
-    def test_trick_never(self) -> None:
+    def test_tricks_default_off(self) -> None:
         self.assertIs(self.c.compile({"type": "trick", "name": "Bomb Jump", "amount": 1}), NEVER)
+
+    def test_trick_levels_come_from_the_parameter(self) -> None:
+        trick = lambda name, level: {"type": "trick", "name": name, "amount": level}  # noqa: E731
+        c = RuleCompiler(player=1, tricks={"Bomb Jump": 2, "Movement": 0})
+        self.assertIs(c.compile(trick("Bomb Jump", 1)), ALWAYS)
+        self.assertIs(c.compile(trick("Bomb Jump", 2)), ALWAYS)
+        self.assertIs(c.compile(trick("Bomb Jump", 3)), NEVER)
+        self.assertIs(c.compile(trick("Movement", 1)), NEVER)
+        self.assertIs(c.compile(trick("Knowledge", 1)), NEVER)
+        self.assertIs(c.compile({**trick("Bomb Jump", 3), "negate": True}), ALWAYS)
+        with self.assertRaises(ValueError):
+            RuleCompiler(player=1, tricks={"Bogus Trick": 1})
+        with self.assertRaises(ValueError):
+            RuleCompiler(player=1, tricks={"Bomb Jump": 6})
+
+    def test_trick_data(self) -> None:
+        """data/tricks.py: one report per trick, USABLE_TRICKS within the offered range (E23)."""
+        self.assertEqual(set(trick_data.TRICK_REPORT), set(game_data.TRICKS))
+        self.assertTrue(trick_data.USABLE_TRICKS)
+        for name, level in trick_data.USABLE_TRICKS.items():
+            self.assertIn(level, range(1, trick_data.USABLE_MAX_LEVEL + 1), name)
+            self.assertEqual(trick_data.TRICK_REPORT[name]["usable_level"], level)
+        self.assertEqual(trick_data.TRICK_COVERAGE, {name: 5 for name in game_data.TRICKS})
 
     def test_no_item_and_node_never(self) -> None:
         self.assertIs(self.c.compile(item("Morph Ball", negate=True)), NEVER)
@@ -193,8 +244,25 @@ class TestDeadEndLocations(MP3TestBase):
             else:
                 with_rule.append(loc["id"])
                 self.assertIsNot(compiler.compile(loc["escape_requirement"]), ALWAYS, loc["name"])
-        self.assertEqual(len(with_rule), 22)
-        self.assertTrue({97, 98, 99} <= set(with_rule))
+        self.assertEqual(len(with_rule), sum(loc["escape_requirement"] != {"and": []} for loc in location_data.LOCATIONS))
+        self.assertTrue(DEFAULT_RULE_LOCATIONS <= set(with_rule))
+
+    def test_default_setup_behaves_as_before(self) -> None:
+        """T30: the rules no longer assume starting items or the trick setting, but with the default starting items
+        and no tricks only the 22 T25 locations ever differ from their region (random inventories)."""
+        full = [n for n in pool_names() if RECORDS[n]["progression"]]
+        rng = random.Random(5)
+        inventories = [[n for n in full if n != missing] for missing in sorted(set(full))]
+        inventories += [rng.sample(full, rng.randint(0, len(full))) for _ in range(60)]
+        differs = set()
+        for names in inventories:
+            state = self._state_with(names)
+            for loc in location_data.LOCATIONS:
+                location = self._location(loc["id"])
+                if location.parent_region.can_reach(state) and not location.can_reach(state):
+                    differs.add(loc["id"])
+        self.assertLessEqual(differs, DEFAULT_RULE_LOCATIONS)
+        self.assertTrue({97, 98, 99} <= differs)
 
     def test_leviathan_cores_need_their_exit_item(self) -> None:
         """B5: the core's region is reachable without the exit item, the location is not."""
@@ -215,3 +283,47 @@ class TestDeadEndLocations(MP3TestBase):
             for item in exit_items:
                 self.assertFalse(location.can_fill(self._state_with(names), self.world.create_item(item)),
                                  (location.name, item))
+
+
+class TestTricks(unittest.TestCase):
+    """E23 (T30): the APWorld evaluates the trick leaves with the slot's levels; checked against the simulator."""
+
+    def test_tricks_open_more_of_the_graph(self) -> None:
+        default = reachable_graph()
+        usable = reachable_graph(trick_data.USABLE_TRICKS)
+        coverage = reachable_graph(trick_data.TRICK_COVERAGE)
+        self.assertLessEqual(default.nodes, usable.nodes)
+        self.assertLessEqual(usable.nodes, coverage.nodes)
+        self.assertNotIn("Gel Processing Site Out of Bounds", default.events)
+        self.assertIn("Gel Processing Site Out of Bounds", coverage.events)  # T20: only reachable via tricks
+        self.assertIs(reachable_graph({}), default)
+
+    def test_usable_tricks_match_playthrough_sim_logic(self) -> None:
+        """With USABLE_TRICKS: reachable nodes, events and locations agree with playthrough_sim.World(tricks=...)
+        and some location is reachable with fewer items than without tricks."""
+        sim = load_playthrough_sim()
+        if sim is None:
+            self.skipTest("apworld/tools/playthrough_sim.py not found")
+        tricks = dict(trick_data.USABLE_TRICKS)
+        sim_world = sim.World(sim.load_data(), tricks=tricks)
+        multiworld = multiworld_with_tricks(tricks)
+        node_regions = {node_name(node): node for node in reachable_graph(tricks).nodes}
+        locations = {loc.address - BASE_ID: loc for loc in multiworld.get_locations(1) if loc.address is not None}
+        full = [n for n in pool_names() if RECORDS[n]["progression"]]
+        rng = random.Random(9)
+        inventories = [rng.sample(full, rng.randint(0, len(full) // 2)) for _ in range(30)]
+        earlier = False
+        default_world = sim.World(sim.load_data())
+        for names in inventories:
+            state = state_with(multiworld, 1, names)
+            inv, _ = sim_world.inventory([RECORDS[n] for n in names + starting_names()])
+            nodes, events, _, _ = sim_world.reach(inv)
+            ap_nodes = {node for name, node in node_regions.items()
+                        if multiworld.get_region(name, 1).can_reach(state)}
+            self.assertEqual(ap_nodes, set(nodes), sorted(names))
+            self.assertEqual({ev for ev in logic_data.EVENTS if state.has(ev, 1)}, set(events), sorted(names))
+            ap_locations = {lid for lid, loc in locations.items() if loc.can_reach(state)}
+            self.assertEqual(ap_locations, sim_world.reachable_locations(nodes, inv, events), sorted(names))
+            d_nodes, d_events, _, _ = default_world.reach(dict(inv))
+            earlier |= bool(ap_locations - default_world.reachable_locations(d_nodes, inv, d_events))
+        self.assertTrue(earlier)

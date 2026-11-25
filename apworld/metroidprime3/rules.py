@@ -11,7 +11,9 @@ Semantics (data/README.md, SPEC E18):
   ``lock.opened_by`` is another item only counts while that item is held (possession logic, data README).
 - ``event``: event item held. ``event`` with ``negate`` ("before event X") = satisfied (E18, the escape gate is
   already part of the connection requirements).
-- ``trick``: never satisfied in the MVP. ``item`` with ``negate`` and ``node``: never satisfied.
+- ``trick``: the slot's level for that trick >= ``amount`` (``negate``: level < amount). The levels come from the
+  ``tricks`` parameter ({trick name: 0-5}, data/game.py TRICKS), never from data/game.py SETTINGS; default: every
+  trick off (E23, T30). ``item`` with ``negate`` and ``node``: never satisfied.
 - ``damage``: ``starting_energy + energy_per_tank * tanks > ceil(reduction * int(amount * strictness))``,
   reduction = smallest factor of the held reduction items (data/game.py SETTINGS["damage"]).
 - ``misc``/``version``: static switches from SETTINGS, ``negate`` = value < amount.
@@ -21,7 +23,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Mapping
 
 from .data import game as game_data
 from .data import logic as logic_data
@@ -89,11 +91,26 @@ def _build_providers() -> dict[str, list[_Provider]]:
 PROVIDERS = _build_providers()
 
 
-class RuleCompiler:
-    """Compiles requirement trees into rules for one player. Templates are compiled once and shared."""
+def trick_levels(tricks: Mapping[str, int] | None = None) -> dict[str, int]:
+    """Validated trick levels {name: level} for RuleCompiler; unknown names or levels outside 0-5 raise."""
+    levels = dict(tricks or {})
+    unknown = sorted(set(levels) - set(game_data.TRICKS))
+    if unknown:
+        raise ValueError(f"unknown tricks: {unknown}")
+    bad = {name: lv for name, lv in levels.items() if lv not in game_data.TRICK_LEVEL_NAMES}
+    if bad:
+        raise ValueError(f"trick levels must be one of {sorted(game_data.TRICK_LEVEL_NAMES)}: {bad}")
+    return levels
 
-    def __init__(self, player: int) -> None:
+
+class RuleCompiler:
+    """Compiles requirement trees into rules for one player. Templates are compiled once and shared.
+
+    ``tricks``: the player's trick levels {trick name: 0-5}; missing tricks are off (default: all off)."""
+
+    def __init__(self, player: int, tricks: Mapping[str, int] | None = None) -> None:
         self.player = player
+        self.tricks = trick_levels(tricks)
         settings = game_data.SETTINGS
         self.misc = settings["misc_resources"]
         self.version = settings["version_resources"]
@@ -123,7 +140,8 @@ class RuleCompiler:
             player = self.player
             return lambda state: state.has(name, player)
         if kind == "trick":
-            return NEVER  # MVP: no tricks
+            have = self.tricks.get(name, 0)
+            return ALWAYS if ((have < amount) if negate else (have >= amount)) else NEVER
         if kind == "damage":
             return self._damage(name, amount)
         if kind in ("misc", "version"):

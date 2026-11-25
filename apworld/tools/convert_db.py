@@ -11,6 +11,7 @@ Output files (see apworld/metroidprime3/data/README.md for the format):
     locations.py  LOCATIONS (99, id = pickup index 1-99, escape_requirement E22), UNPATCHED_LOCATION (index 0, E13)
     items.py      ITEMS (AP pool, 99 items incl. Hypermode, one Missile Expansion less, E17), STARTING_ITEMS
     game.py       VICTORY_REQUIREMENT, START_LOCATION, SETTINGS, TRICKS, requirement kind statistics
+    tricks.py     TRICK_REPORT (uses per level, rooms, locations/events reachable earlier), USABLE_TRICKS (E23)
 
 Dangerous events (E18): every event that occurs negated ("before <event>") gets an escape_requirement (way from its
 event node back to a ship in the state "after X", see EscapeSolver); it is ANDed onto every connection into the event
@@ -19,6 +20,10 @@ node. "before <event>" itself stays in the data and counts as satisfied in the l
 Dead-end locations (E22): every pickup node gets an escape_requirement too (way back to a ship in the state after the
 pickup and after the events every way there triggers, see attach_location_escapes). It is stored in LOCATIONS and is
 the location's own access rule; ``{"and": []}`` where every state that reaches the node already satisfies it.
+
+Independent of the setup (E23, T30): no escape requirement assumes starting items (they are normal item leaves), every
+escape is computed without tricks, and "trivial" means trivial for every starting inventory and every trick setting
+up to TRICK_COVERAGE. Trick leaves stay in the normal requirement trees; the APWorld evaluates them per slot.
 
 The output is deterministic (no set iteration, no timestamps).
 """
@@ -81,6 +86,26 @@ NETWORK_EVENT = "Teleporter Network: {}"
 # E17: Hypermode goes into the AP pool, one of these leaves it, so the pool stays at 99 (= locations).
 DROPPED_FROM_POOL = "Missile Expansion"
 LOCK_EVENT = "Dock Lock: {} - {} - {}"
+# Highest Corruptovania trick level (5 = hypermode). The location rules (E22) stay safe for every trick setting up to
+# this level for every trick (TRICK_COVERAGE in attach_location_escapes), so the APWorld may enable any of them.
+MAX_TRICK_LEVEL = max(level.as_number for level in LayoutTrickLevel)
+
+# Trick recommendation for the APWorld options (E23, T31). A trick is offered up to the highest level <= USABLE_MAX_LEVEL
+# at which it is asked for by at least MIN_TRICK_USES requirements and makes at least one location reachable earlier,
+# provided it never shares an AND term with an unsupported requirement kind ("no item", node; "before <event>" is
+# handled by E18) and is not excluded below. The playthrough simulator checks the result
+# (apworld/tools/playthrough_sim.py --matrix, data/README.md "Tricks").
+USABLE_MAX_LEVEL = 3  # E23: global trick level "off ... advanced"
+MIN_TRICK_USES = 3
+EXCLUDED_TRICKS = {
+    "Single Room Out of Bounds": "leaves the level geometry; the dangerous event Gel Processing Site Out of Bounds "
+                                 "(E18) exists only through it (with Bomb Jump), and the logic models out of bounds "
+                                 "only for single rooms",
+    "Fall Respawn Skip": "relies on the respawn position after a fall, which the logic does not model",
+    "Hazards without Hazard Shield": "walks through Phazon/hazards on damage requirements; the AP damage rule checks "
+                                     "every requirement with full energy (no damage adds up), too optimistic for "
+                                     "hazard routes",
+}
 
 
 def classify(req) -> str:
@@ -449,6 +474,7 @@ class Converter:
         }
         attach_escape_requirements(files)
         attach_location_escapes(files)
+        files["tricks.py"] = trick_report(files)
         return files
 
 
@@ -545,24 +571,28 @@ def _atoms_no_tpl(req: dict):
 class EscapeSolver:
     """escape_requirement of a node: when a ship is reachable from it (E18 for dangerous events, E22 for pickups).
 
-    State: the events in ``triggered`` have happened ("before X" false, event X true), the player stands at the
-    node and owns only what he had when entering it. The requirement says when a ship (teleporter_network node whose
-    ``is_unlocked`` holds) is reachable from there. It is the least fixpoint of "node reachable from the start node"
-    over DNFs, evaluated symbolically:
-        item / damage         -> atom; an item amount already covered by ``known`` (the starting items) -> satisfied
-        trick / misc / version -> constant from SETTINGS (preset: all tricks off). With tricks enabled later the
-                                 gate is stricter than necessary, never too loose.
+    State: the events in ``triggered`` have happened ("before X" false), those in ``assumed`` (default: the same set)
+    count as reached (event X true), the player stands at the node and owns only what he had when entering it. The
+    requirement says when a ship (teleporter_network node whose ``is_unlocked`` holds) is reachable from there. It is
+    the least fixpoint of "node reachable from the start node" over DNFs, evaluated symbolically:
+        item / damage         -> atom (starting items too: the data assume no starting inventory, E23)
+        trick                 -> constant from ``tricks`` (default: every trick off, so escapes are computed without
+                                 tricks: stricter than necessary when the APWorld enables tricks, never too loose)
+        misc / version        -> constant from SETTINGS
         before Y (Y not triggered) -> satisfied (as everywhere in the logic)
         event Y               -> atom, unless Y is only reachable after the start node (with all items, the node
                                  blocked): then Y is replaced by its own requirement from there (recursively).
         "no item", node       -> not satisfied (do not occur)
-    E18 uses ``triggered = {X}`` and no ``known`` (unchanged since T20).
+    E18 uses ``triggered = assumed = {X}``. ``known`` (item amounts that count as owned) is only for analyses in the
+    tests; the generated data never use it.
     """
 
-    def __init__(self, logic: dict, settings: dict, known: dict[str, int] | None = None) -> None:
+    def __init__(self, logic: dict, settings: dict, known: dict[str, int] | None = None,
+                 tricks: dict[str, int] | None = None) -> None:
         self.logic = logic
         self.settings = settings
         self.known = dict(known or {})
+        self.tricks = dict(tricks or {})
         self.templates = logic["TEMPLATES"]
         self.targets = []
         for rname, info_region in logic["REGIONS"].items():
@@ -575,28 +605,30 @@ class EscapeSolver:
             self.out[tuple(conn["from"])].append(conn)
 
     def static(self, kind: str, name: str, amount: int, negate: bool) -> bool:
-        table = {"trick": self.settings["trick_level"]["levels"], "misc": self.settings["misc_resources"],
+        table = {"trick": self.tricks, "misc": self.settings["misc_resources"],
                  "version": self.settings["version_resources"]}[kind]
         have = table.get(name, 0)
         return have < amount if negate else have >= amount
 
-    def to_dnf(self, req: dict, triggered: frozenset[str], inlined: set[str], ev_dnf: dict) -> list:
+    def to_dnf(self, req: dict, triggered: frozenset[str], inlined: set[str], ev_dnf: dict,
+               assumed: frozenset[str] | None = None) -> list:
+        assumed = triggered if assumed is None else assumed
         if "and" in req:
             acc = TRUE
             for r in req["and"]:
-                acc = dnf_and(acc, self.to_dnf(r, triggered, inlined, ev_dnf))
+                acc = dnf_and(acc, self.to_dnf(r, triggered, inlined, ev_dnf, assumed))
                 if not acc:
                     break
             return acc
         if "or" in req:
-            return dnf_or(*(self.to_dnf(r, triggered, inlined, ev_dnf) for r in req["or"]))
+            return dnf_or(*(self.to_dnf(r, triggered, inlined, ev_dnf, assumed) for r in req["or"]))
         kind, name, amount, negate = req["type"], req.get("name"), req.get("amount", 1), req.get("negate", False)
         if kind == "template":
-            return self.to_dnf(self.templates[name], triggered, inlined, ev_dnf)
+            return self.to_dnf(self.templates[name], triggered, inlined, ev_dnf, assumed)
         if kind == "event":
             if negate:
                 return FALSE if name in triggered else TRUE
-            if name in triggered:
+            if name in assumed:
                 return TRUE
             if name in inlined:
                 return ev_dnf.get(name, FALSE)
@@ -615,21 +647,30 @@ class EscapeSolver:
             return TRUE if self.static(kind, name, amount, negate) else FALSE
         raise ValueError(f"Unknown requirement type {kind!r}")
 
-    def solve(self, triggered: frozenset[str], node: tuple, inlined: set[str]) -> list:
+    def solve(self, triggered: frozenset[str], node: tuple, inlined: set[str],
+              assumed: frozenset[str] | None = None) -> list:
         """DNF under which a ship is reachable from ``node`` (see the class docstring)."""
-        reach, ev_dnf = self.reach_dnf(node, triggered, inlined)
-        return dnf_or(*(dnf_and(reach[n], self.to_dnf(unlocked, triggered, inlined, ev_dnf))
+        reach, ev_dnf = self.reach_dnf(node, triggered, inlined, assumed=assumed)
+        return dnf_or(*(dnf_and(reach[n], self.to_dnf(unlocked, triggered, inlined, ev_dnf, assumed))
                         for n, unlocked in self.targets if n in reach))
 
     def reach_dnf(self, node: tuple, triggered: frozenset[str], inlined: set[str],
-                  stop_at_ships: bool = True) -> tuple[dict[tuple, list], dict[str, list]]:
+                  stop_at_ships: bool = True, assumed: frozenset[str] | None = None,
+                  base: tuple[dict, dict] | None = None) -> tuple[dict[tuple, list], dict[str, list]]:
         """Worklist fixpoint with delta propagation: DNF per node reachable from ``node`` and per inlined event.
         With ``stop_at_ships`` nothing is propagated out of a ship node (other than ``node``): every term that
-        passes a ship is implied by a term that already reached it."""
+        passes a ship is implied by a term that already reached it.
+
+        ``base`` = the result of the same call on a solver with fewer tricks: the fixpoint continues from there and
+        only re-evaluates the requirements that ask for a trick (the logic is monotonic in tricks). Values that do not
+        change keep their identity (``reach[n] is base[0][n]``)."""
         target_nodes = {n for n, _ in self.targets} if stop_at_ships else set()
-        reach: dict[tuple, list] = {node: TRUE}
-        delta: dict[tuple, list] = {node: TRUE}
-        ev_dnf: dict[str, list] = {}
+        if base is None:
+            reach: dict[tuple, list] = {node: TRUE}
+            delta: dict[tuple, list] = {node: TRUE}
+            ev_dnf: dict[str, list] = {}
+        else:
+            reach, delta, ev_dnf = dict(base[0]), {}, dict(base[1])
         sources = collections.defaultdict(list)  # node -> [(event, requirement)]
         for y in sorted(inlined):
             for s in self.logic["EVENTS"][y]["sources"]:
@@ -653,12 +694,12 @@ class EscapeSolver:
         def req_dnf(req: dict) -> list:
             key = id(req)
             if key in dynamic:
-                return self.to_dnf(req, triggered, inlined, ev_dnf)
+                return self.to_dnf(req, triggered, inlined, ev_dnf, assumed)
             if key not in static_cache:
-                static_cache[key] = self.to_dnf(req, triggered, inlined, ev_dnf)
+                static_cache[key] = self.to_dnf(req, triggered, inlined, ev_dnf, assumed)
             return static_cache[key]
 
-        queue = [node]
+        queue = [node] if base is None else []
         changed_events: list[str] = []
 
         def add_node(to: tuple, gain: list) -> None:
@@ -676,6 +717,25 @@ class EscapeSolver:
                 return
             ev_dnf[y] = dnf_or(old, gain)
             changed_events.append(y)
+
+        if base is not None:
+            def asks_for_trick(req: dict) -> bool:
+                return any(k == "trick" for k, _, _ in requirement_atoms(req, self.templates))
+
+            for frm, conns in self.out.items():
+                if frm in reach and not (frm in target_nodes and frm != node):
+                    for conn in conns:
+                        if asks_for_trick(conn["requirement"]):
+                            gain = dnf_and(reach[frm], req_dnf(conn["requirement"]))
+                            if gain:
+                                add_node(tuple(conn["to"]), gain)
+            for n, reqs in sources.items():
+                if n in reach:
+                    for y, r in reqs:
+                        if asks_for_trick(r):
+                            gain = dnf_and(reach[n], req_dnf(r))
+                            if gain:
+                                add_event(y, gain)
 
         while queue or changed_events:
             while queue:
@@ -711,12 +771,24 @@ class EscapeSolver:
         return reach, ev_dnf
 
 
-def _simulator_world(files: dict[str, dict]):
-    """playthrough_sim.World on the data generated so far (compiled at call time)."""
-    spec = importlib.util.spec_from_file_location("playthrough_sim", Path(__file__).with_name("playthrough_sim.py"))
-    playthrough_sim = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(playthrough_sim)
-    return playthrough_sim.World(SimpleNamespace(**{k[:-3]: SimpleNamespace(**v) for k, v in files.items()}))
+_SIMULATOR = None
+
+
+def _simulator_world(files: dict[str, dict], tricks: dict[str, int] | None = None):
+    """playthrough_sim.World on the data generated so far (compiled at call time); ``tricks`` = trick levels."""
+    global _SIMULATOR
+    if _SIMULATOR is None:
+        spec = importlib.util.spec_from_file_location("playthrough_sim",
+                                                      Path(__file__).with_name("playthrough_sim.py"))
+        _SIMULATOR = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_SIMULATOR)
+    data = SimpleNamespace(**{k[:-3]: SimpleNamespace(**v) for k, v in files.items() if k != "tricks.py"})
+    return _SIMULATOR.World(data, tricks=tricks)
+
+
+def trick_coverage(game: dict) -> dict[str, int]:
+    """The trick setting the location rules are made safe for (E23): every trick at MAX_TRICK_LEVEL."""
+    return {name: MAX_TRICK_LEVEL for name in game["TRICKS"]}
 
 
 def attach_escape_requirements(files: dict[str, dict]) -> None:
@@ -771,41 +843,52 @@ def attach_location_escapes(files: dict[str, dict]) -> list[int]:
     locations whose escape_requirement is not trivially satisfied.
 
     Same solver as E18, state "after the pickup and after all events on the way there": starting at the pickup node,
-    with the events that every way to the node triggers (``escape_triggered_events``: the node is unreachable with
-    all items when the event, and for a database event its node, is blocked) and with events that are only
-    reachable through the pickup node inlined (``escape_inlined_events``, cycle-free). Starting items count as owned.
-    Connections already carry the E18 gates.
+    with events that are only reachable through the pickup node inlined (``escape_inlined_events``, cycle-free).
+    Connections already carry the E18 gates. Independent of the setup (E23):
+    - No starting items are assumed: they are item leaves like every other item.
+    - The way out is computed without tricks.
+    - ``escape_triggered_events``: events that every way to the node without tricks triggers (the node is unreachable
+      with all items when the event, and for a database event its node, is blocked): "before Y" is false.
+      ``escape_assumed_events``: the part that every way even with TRICK_COVERAGE triggers: Y counts as reached. The
+      other triggered events stay event leaves (a trick may skip them on the way in).
 
     The requirement counts as trivially satisfied (stored as ``{"and": []}``) when every state that reaches the
-    pickup node in the logic satisfies it: for every minimal item set that reaches the node (forward DNF from the
-    start, all events inlined) plus the events that set reaches, the requirement holds. The logic is monotonic
-    ("before X" satisfied), so checking the minimal sets is enough.
+    pickup node satisfies it, for every starting inventory and every trick setting up to TRICK_COVERAGE: for every
+    minimal item set that reaches the node with TRICK_COVERAGE (forward DNF from the start, all events inlined, no
+    starting items), the requirement holds with the events that set reaches without tricks. The logic is monotonic in
+    items, tricks and events ("before X" satisfied), so checking these sets is enough.
     """
-    logic, game, items = files["logic.py"], files["game.py"], files["items.py"]
+    logic, game = files["logic.py"], files["game.py"]
     locations = files["locations.py"]["LOCATIONS"]
+    coverage = trick_coverage(game)
     world = _simulator_world(files)  # compiled now: the E18 gates are part of the connections
+    world_t = _simulator_world(files, tricks=coverage)
     all_inv = world.all_items()
     reached, all_events, _, _ = world.reach(all_inv)
-    start_inv, _ = world.inventory(items["STARTING_ITEMS"])
     damage = game["SETTINGS"]["damage"]
-    solver = EscapeSolver(logic, game["SETTINGS"], known=start_inv)
+    solver = EscapeSolver(logic, game["SETTINGS"])
     nodes = {loc["id"]: (loc["region"], loc["area"], loc["node"]) for loc in locations}
     unreachable = sorted(lid for lid, node in nodes.items() if node not in reached)
     if unreachable:
         raise ValueError(f"locations unreachable with all items: {unreachable}")
 
     triggered: dict[int, set[str]] = {lid: set() for lid in nodes}
+    assumed: dict[int, set[str]] = {lid: set() for lid in nodes}
     for y in sorted(all_events):
         event = logic["EVENTS"][y]
         event_nodes = {tuple(s["node"]) for s in event["sources"]} if event["kind"] == "db" else set()
         without_y, _, _, _ = world.reach(all_inv, blocked_nodes=event_nodes, blocked_events={y})
+        without_y_t, _, _, _ = world_t.reach(all_inv, blocked_nodes=event_nodes, blocked_events={y})
         for lid, node in nodes.items():
             if node not in without_y:
                 triggered[lid].add(y)
+                if node not in without_y_t:
+                    assumed[lid].add(y)
 
-    # minimal item sets per node (forward from the start, every event replaced by its own requirement)
-    entry, _ = solver.reach_dnf(tuple(game["START_LOCATION"]), frozenset(), set(logic["EVENTS"]),
-                                stop_at_ships=False)
+    # minimal item sets per node with every trick enabled (forward from the start, every event inlined)
+    entry_solver = EscapeSolver(logic, game["SETTINGS"], tricks=coverage)
+    entry, _ = entry_solver.reach_dnf(tuple(game["START_LOCATION"]), frozenset(), set(logic["EVENTS"]),
+                                      stop_at_ships=False)
 
     def implied_by_entry(node: tuple, dnf: list) -> bool:
         rule, _ = world.compile(dnf_to_requirement(dnf))
@@ -813,10 +896,11 @@ def attach_location_escapes(files: dict[str, dict]) -> list[int]:
         if not terms:
             raise ValueError(f"entry DNF of {node} is empty, but the node is reachable")
         for term in terms:
-            inv = _term_inventory(term, start_inv, damage)
-            term_reached, term_events, _, _ = world.reach(inv)
+            inv = _term_inventory(term, {}, damage)
+            term_reached, _, _, _ = world_t.reach(inv)
             if node not in term_reached:
                 raise ValueError(f"entry term {term} does not reach {node} in the simulator")
+            _, term_events, _, _ = world.reach(inv)  # events without tricks: the fewest any setting reaches
             if not rule(inv, term_events, False):
                 return False
         return True
@@ -829,7 +913,7 @@ def attach_location_escapes(files: dict[str, dict]) -> list[int]:
         if inlined & triggered[lid]:
             raise ValueError(f"location {lid}: events both triggered on the way and only reachable after it: "
                              f"{sorted(inlined & triggered[lid])}")
-        dnf = solver.solve(frozenset(triggered[lid]), node, inlined)
+        dnf = solver.solve(frozenset(triggered[lid]), node, inlined, assumed=frozenset(assumed[lid]))
         if not dnf:
             raise ValueError(f"location {lid} {loc['name']!r}: no way back to a ship even with all items")
         if dnf == TRUE or implied_by_entry(node, dnf):
@@ -838,8 +922,198 @@ def attach_location_escapes(files: dict[str, dict]) -> list[int]:
         nontrivial.append(lid)
         loc["escape_requirement"] = dnf_to_requirement(dnf)
         loc["escape_triggered_events"] = sorted(triggered[lid])
+        loc["escape_assumed_events"] = sorted(assumed[lid])
         loc["escape_inlined_events"] = sorted(inlined)
     return nontrivial
+
+
+# ---------------------------------------------------------------- trick report (E23)
+def _symbolic_terms(req: dict, templates: dict) -> list[frozenset]:
+    """Requirement as an OR of AND terms over its leaves (type, name, amount, negate), templates expanded."""
+    if "and" in req:
+        acc = [frozenset()]
+        for r in req["and"]:
+            sub = _symbolic_terms(r, templates)
+            acc = sorted({a | b for a in acc for b in sub}, key=sorted)
+        return acc
+    if "or" in req:
+        return sorted({t for r in req["or"] for t in _symbolic_terms(r, templates)}, key=sorted)
+    if req["type"] == "template":
+        return _symbolic_terms(templates[req["name"]], templates)
+    return [frozenset({(req["type"], req.get("name", ""), req.get("amount", 1), bool(req.get("negate", False)))})]
+
+
+def _requirement_trees(logic: dict, victory: dict) -> list[tuple[str, tuple | None, dict]]:
+    """Every requirement tree of the data that may hold a trick: (kind, node it starts at, tree). Connections without
+    their E18 gate (the gates are computed without tricks), templates only where they are used."""
+    trees = []
+    for conn in logic["CONNECTIONS"]:
+        req = conn["requirement"]["and"][0] if conn.get("escape_gate") else conn["requirement"]
+        trees.append(("connection", tuple(conn["from"]), req))
+    for event in logic["EVENTS"].values():
+        trees += [("event source", tuple(src["node"]), src["requirement"]) for src in event["sources"]]
+    for rname, info_region in logic["REGIONS"].items():
+        for aname, area in info_region["areas"].items():
+            for nname, node in area["nodes"].items():
+                trees += [("teleporter", (rname, aname, nname), node[k])
+                          for k in ("is_unlocked", "requirement_to_activate") if k in node]
+    trees.append(("victory", None, victory))
+    return trees
+
+
+def _leaf_counts(req: dict, out: collections.Counter) -> None:
+    if "and" in req or "or" in req:
+        for r in req.get("and", []) + req.get("or", []):
+            _leaf_counts(r, out)
+    elif req["type"] == "trick":
+        out[(req["name"], req["amount"])] += 1
+
+
+class _AccessAnalysis:
+    """Minimal item sets (DNF, all events inlined, no starting items) of every location's AP access (node reachable
+    and escape_requirement) and of every event, per trick setting. Trick settings are evaluated incrementally on top
+    of the result without tricks."""
+
+    def __init__(self, logic: dict, game: dict, locations: list[dict]) -> None:
+        self.logic, self.game = logic, game
+        self.events = set(logic["EVENTS"])
+        self.locations = [(loc["id"], (loc["region"], loc["area"], loc["node"]), loc["escape_requirement"],
+                           sorted({n for k, n, _ in requirement_atoms(loc["escape_requirement"], logic["TEMPLATES"])
+                                   if k == "event"}))
+                          for loc in locations]
+        self.base = self._run({}, None)
+
+    def _run(self, tricks: dict[str, int], base) -> tuple[dict, dict, dict, dict]:
+        solver = EscapeSolver(self.logic, self.game["SETTINGS"], tricks=tricks)
+        entry, ev_dnf = solver.reach_dnf(tuple(self.game["START_LOCATION"]), frozenset(), self.events,
+                                         stop_at_ships=False, base=None if base is None else base[:2])
+        rules, access = {}, {}
+        for lid, node, requirement, rule_events in self.locations:
+            if base is not None and all(ev_dnf.get(e) is base[1].get(e) for e in rule_events):
+                rules[lid] = base[2][lid]
+            else:
+                rules[lid] = solver.to_dnf(requirement, frozenset(), self.events, ev_dnf)
+            if base is not None and rules[lid] is base[2][lid] and entry.get(node) is base[0].get(node):
+                access[lid] = base[3][lid]
+            else:
+                access[lid] = dnf_and(entry.get(node, FALSE), rules[lid])
+        return entry, ev_dnf, rules, access
+
+    def gains(self, tricks: dict[str, int], db_events: list[str]) -> tuple[list[int], list[str], list[str]]:
+        """Locations and database events reachable with fewer items than without tricks, and database events
+        reachable only with these tricks."""
+        _, ev_dnf, _, access = self._run(tricks, self.base)
+        base_events = self.base[1]
+        events = {k: v for k, v in ev_dnf.items() if k in db_events and v is not base_events.get(k)}
+        return (_gains(self.base[3], {k: v for k, v in access.items() if v is not self.base[3][k]}),
+                _gains(base_events, events),
+                sorted(k for k, v in events.items() if v and not base_events.get(k)))
+
+
+def _gains(base: dict, more: dict) -> list:
+    """Keys whose DNF in ``more`` has a term that no term of ``base`` implies (reachable with fewer items)."""
+    return sorted(k for k, terms in more.items()
+                  if any(not any(_implies(t, b) for b in base.get(k, FALSE)) for t in terms))
+
+
+def trick_report(files: dict[str, dict]) -> dict:
+    """tricks.py (E23, T30): how every trick is used and what it changes, plus the recommendation USABLE_TRICKS.
+
+    Per trick: ``uses`` = trick leaves in the database per level (templates counted once), ``requirements`` =
+    connections/event sources whose requirement asks for the trick at that level (templates expanded), ``rooms`` where
+    they start, ``with_before``/``with_damage``/``with_unsupported`` = AND terms that combine the trick with "before
+    <event>", a damage requirement or an unsupported kind ("no item", node). Per level L (the trick alone at L, all
+    others off): ``earlier_locations`` (AP location access, i.e. node and escape_requirement, possible with fewer items
+    than without the trick), ``earlier_events`` (database events, likewise) and ``new_events`` (database events
+    reachable only with the trick, even with every item). ``usable_level`` is the recommendation (0 = not offered,
+    criteria at USABLE_MAX_LEVEL), ``reason`` explains it.
+    """
+    logic, game = files["logic.py"], files["game.py"]
+    locations = files["locations.py"]["LOCATIONS"]
+    templates = logic["TEMPLATES"]
+    trees = _requirement_trees(logic, game["VICTORY_REQUIREMENT"])
+    leaf_uses: collections.Counter = collections.Counter()
+    for tree in [t for _, _, t in trees] + list(templates.values()):
+        _leaf_counts(tree, leaf_uses)
+
+    requirements: collections.Counter = collections.Counter()
+    rooms: dict[str, set[str]] = collections.defaultdict(set)
+    combined: collections.Counter = collections.Counter()
+    for _, node, tree in trees:
+        terms = _symbolic_terms(tree, templates)
+        seen = set()
+        for term in terms:
+            for kind, name, amount, _ in term:
+                if kind != "trick":
+                    continue
+                seen.add((name, amount))
+                others = {(k, neg) for k, _, _, neg in term}
+                if ("event", True) in others:
+                    combined[(name, "before")] += 1
+                if ("damage", False) in others:
+                    combined[(name, "damage")] += 1
+                if ("item", True) in others or any(k == "node" for k, _ in others):
+                    combined[(name, "unsupported")] += 1
+        for name, amount in seen:
+            requirements[(name, amount)] += 1
+            if node is not None:
+                rooms[name].add(f"{node[0]} - {node[1]}")
+
+    db_events = sorted(name for name, ev in logic["EVENTS"].items() if ev["kind"] == "db")
+    analysis = _AccessAnalysis(logic, game, locations)
+    report = {}
+    for trick in game["TRICKS"]:
+        levels = sorted({lv for (name, lv) in set(leaf_uses) | set(requirements) if name == trick})
+        entry = {
+            "short_name": game["TRICKS"][trick]["short_name"],
+            "uses": {lv: leaf_uses[(trick, lv)] for lv in levels},
+            "requirements": {lv: requirements[(trick, lv)] for lv in levels},
+            "rooms": sorted(rooms[trick]),
+            "with_before": combined[(trick, "before")],
+            "with_damage": combined[(trick, "damage")],
+            "with_unsupported": combined[(trick, "unsupported")],
+            "earlier_locations": {},
+            "earlier_events": {},
+            "new_events": {},
+        }
+        for lv in levels:
+            locs, evs, new = analysis.gains({trick: lv}, db_events)
+            entry["earlier_locations"][lv], entry["earlier_events"][lv], entry["new_events"][lv] = locs, evs, new
+        entry["usable_level"], entry["reason"] = _usable_level(trick, entry)
+        report[trick] = entry
+    usable = {trick: r["usable_level"] for trick, r in report.items() if r["usable_level"] > 0}
+    combined = {}
+    for label, tricks in (("usable", usable), ("coverage", trick_coverage(game))):
+        locs, evs, new = analysis.gains(tricks, db_events)
+        combined[label] = {"tricks": tricks, "earlier_locations": locs, "earlier_events": evs, "new_events": new}
+    return {
+        "TRICK_COVERAGE": trick_coverage(game),
+        "USABLE_MAX_LEVEL": USABLE_MAX_LEVEL,
+        "USABLE_TRICKS": usable,
+        "TRICK_REPORT": report,
+        "COMBINED_REPORT": combined,
+    }
+
+
+def _usable_level(trick: str, entry: dict) -> tuple[int, str]:
+    """Recommended highest level for the APWorld options (0 = not offered) and why."""
+    if trick in EXCLUDED_TRICKS:
+        return 0, f"excluded: {EXCLUDED_TRICKS[trick]}"
+    if entry["with_unsupported"]:
+        return 0, "combined with an unsupported requirement kind"
+    best, why = 0, f"fewer than {MIN_TRICK_USES} requirements at levels 1-{USABLE_MAX_LEVEL}"
+    for lv in sorted(level for level in entry["requirements"] if level <= USABLE_MAX_LEVEL):
+        count = sum(n for level, n in entry["requirements"].items() if level <= lv)
+        if count < MIN_TRICK_USES:
+            continue
+        if not any(entry["earlier_locations"].get(level) for level in entry["earlier_locations"] if level <= lv):
+            why = f"makes no location reachable earlier at levels 1-{lv}"
+            continue
+        best = lv
+    if best:
+        count = sum(n for level, n in entry["requirements"].items() if level <= best)
+        why = f"{count} requirements at levels 1-{best}, makes locations reachable earlier"
+    return best, why
 
 
 HEADER = "# Generated by apworld/tools/convert_db.py from the Corruptovania prime3 database. Do not edit.\n"
