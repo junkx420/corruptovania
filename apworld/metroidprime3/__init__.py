@@ -69,6 +69,12 @@ class MP3World(World):
     def get_filler_item_name(self) -> str:
         return FILLER_ITEM_NAME
 
+    def generate_early(self) -> None:
+        if all(getattr(self.options, name).value == option.from_any(option.default).value
+               for name, option in self.options_dataclass.type_hints.items()):
+            # Screw Attack opens two more checks from the starting inventory. Keep it in this player's world.
+            self.multiworld.local_early_items[self.player]["Screw Attack"] = 1
+
     def create_regions(self) -> None:
         create_regions(self)
 

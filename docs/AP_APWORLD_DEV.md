@@ -75,12 +75,11 @@ ChecksFinder:
 Result T04: 10 solo seeds in a row without errors (~0.4 s generation each, ~4 s with startup), 2-player seed
 MP3 + ChecksFinder without errors (124 items).
 
-Result T25 (location rules E22, default options): `Generate.py --seed 1..100` solo: 99 ok, seed 51 fails with
-`FillError` ("No more spots to place 40 items"); 20 seeds MP3 + ChecksFinder (`--seed 1001..1020`): 20/20 ok.
-In-process fill (`distribute_items_restrictive`, seeds 1–1200): 4 failures (51, 611, 990, 1096) with the location
-rules, 1 (771) without them. Cause: the start reaches very few locations (now 3: 4, 11, 17; location 84 is a dead
-end without Boost Ball or Spider Ball), and Archipelago's swap fill runs out of early spots. Not fixed in T25 (needs
-`__init__.py`); experiment: one local early Grapple Lasso (`multiworld.local_early_items`) gives 0/1200 failures.
+T29 addresses the rare fill failures seen in T25 with the E22 location rules. With default options,
+`local_early_items` asks Archipelago to place Screw Attack among the MP3 player's three starting checks.
+Collecting it opens Norion Docking Hub Alpha (3) and Pirate Homeworld Scrapvault (82). Early Grapple Lasso opens
+three checks and caused playthrough seed 6 to stall in testing. The default `test_generation.py` run covers
+seeds 1–300 in process. Set `MP3_EXTENDED_FILL_TESTS=1` to cover seeds 1–1200.
 
 Since T05b the output ZIP contains a **patch file** `<output name>.apmp3` per MP3 slot (e.g.
 `AP_38224278823687041413_P2_Samus.apmp3`) next to `.archipelago` and the spoiler. Format: `AP_PATCH_TOOL.md` section 2.3.
