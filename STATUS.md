@@ -29,6 +29,7 @@ As of 2026-11-24 · MVP according to SPEC.md E1–E3.
 | T21 | Live: confirm traps (Green Lock with starting items, Gandrayda without Voltage), does reloading reset the event, does MP3 save automatically after X? | open (live) | – | – |
 | T22 | CI: GitHub Actions workflow that runs the APWorld tests (and the converter/SAVW tool tests) inside an Archipelago 0.6.8 checkout on every push to `archipelago` | running (Codex) | Codex T22 | – |
 | T23 | Launcher: visible progress while patching the ISO (~40 s, currently no window); fix the wrong slot-68 lines in `docs/AP_MEMORY_MAP.md` | running (Codex) | Codex T23 | – |
+| T24 | Reserve release repo `junkx420/Prime3AP` (E20): public, description, GPLv3, placeholder README pointing to the fork; no code yet | running (Codex) | Codex T24 | – |
 
 Live tests (T11, T13–T15, T17) need the user at the game: only one at a time.
 
