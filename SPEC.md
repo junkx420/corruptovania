@@ -50,6 +50,7 @@ Building blocks:
 - Work happens on branch `archipelago`, remote `origin` = `junkx420/corruptovania`. `upstream` = original repo; never push there.
 - Every worker commits only the files released to them and pushes at the end. Run `git pull --rebase origin archipelago` first. Resolve conflicts in STATUS.md without changing other workers' rows.
 - Never into the repo: ISOs, game files, Dolphin, personal paths, builds (`build/`, `venv/`).
+- Project language is English: code, comments, log messages, tests, docs, SPEC/STATUS (E21). Workers talk to the user in German.
 - The APWorld must not depend on Randovania at runtime. The converter creates self-contained Python data.
 
 ## 4. Features in order
@@ -91,3 +92,4 @@ Building blocks:
 | E18 | "before event X" | Counts as satisfied in the logic. Dangerous is every event that occurs negated somewhere (derived from the data). The converter computes an `escape_requirement` per dangerous event (way back from the event node to the ship in the state "after X", cycle-free: events that require X are replaced by their own requirement) and **attaches it to every connection into the event node** (entering triggers the event). The APWorld needs no special logic for it. The player fixes triggering too early by reloading. No patcher change in the MVP | accepted 2026-11-24 (F-02 + re-check) |
 | E19 | Check of the flag table | 89 locations certain, 10 SpecialFunction locations "probable" (T12). Instead of visiting all 10 live: the client has a learning/log mode (when ItemPercentage rises, it logs newly set flag bytes) and reports differences from the table; checking happens in playtests. T13 checks only easily reachable locations | decided 2026-11-24 |
 | E20 | Release repo | Until the playtest everything stays in the fork. For the beta release (F10) a repo of its own (e.g. `junkx420/metroidprime3-archipelago`) with only APWorld, client, patch tool, guide, GPLv3; `.apworld` and EXE as GitHub release assets. The fork stays the source for logic and patcher | decided 2026-11-25 |
+| E21 | Project language | **English** for all project content (code, comments, logs, tests, docs, SPEC/STATUS); conversation with the user stays German | decided 2026-11-25 (user) |
