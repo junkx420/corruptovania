@@ -65,7 +65,7 @@ Bausteine:
 | F7 | AP-Client: empfangene Items ins Spiel geben, Wiederaufnahme nach Neustart | F6 |
 | F8 | Ende-zu-Ende-Test: 2-Spieler-Multiworld (MP3 + beliebiges Spiel) durchgespielt bis Ziel | F5, F7 |
 | F9 | Optionen-Ausbau: Startort, Starting Items, Trick-Level, Energy-Cell-Ziel (nicht im MVP, siehe E3) | F8 |
-| F10 | DeathLink, Hinweise im Spiel, Release-Paket | F8 |
+| F10 | DeathLink, Hinweise im Spiel, Release-Paket + eigene Release-Repo (E20) | F8 |
 
 ## 5. Offene Entscheidungen
 
@@ -90,3 +90,4 @@ Bausteine:
 | E17 | Ort 0 / Pool-Größe | Ort 0 (nie gepatcht) ist laut DB erst nach „Aurora Unit 313“ erreichbar, sein Vanilla-Item Hypermode ist für die Logik nutzlos. **Hypermode kommt in den AP-Pool, dafür eine Missile Expansion raus; Pool bleibt 99.** Ort 0 ist in AP keine Location | revidiert 2026-11-24 (F-02) |
 | E18 | „before event X“ | Gilt in der Logik als erfüllt. Gefährlich ist jedes Event, das irgendwo negiert vorkommt (aus den Daten abgeleitet). Der Konverter berechnet je gefährlichem Event ein `escape_requirement` (Rückweg vom Event-Knoten zum Schiff im Zustand „nach X“, zyklenfrei: Events, die X voraussetzen, werden durch ihr eigenes Requirement ersetzt) und **hängt es an jede Verbindung in den Event-Knoten** (Betreten löst das Event aus). Die APWorld braucht dafür keine Sonderlogik. Zu frühes Auslösen behebt der Spieler durch Neuladen. Kein Patcher-Eingriff im MVP | angenommen 2026-11-24 (F-02 + Nachprüfung) |
 | E19 | Prüfung der Flag-Tabelle | 89 Orte sicher, 10 SpecialFunction-Orte „wahrscheinlich“ (T12). Statt alle 10 live anzulaufen: Der Client hat einen Lern-/Logmodus (steigt ItemPercentage, protokolliert er neu gesetzte Flag-Bytes) und meldet Abweichungen zur Tabelle; Prüfung erfolgt in Playtests. T13 prüft nur leicht erreichbare Orte | entschieden 2026-11-24 |
+| E20 | Release-Repo | Bis zum Playtest bleibt alles im Fork. Zum Beta-Release (F10) eigene Repo (z. B. `junkx420/metroidprime3-archipelago`) nur mit APWorld, Client, Patch-Tool, Anleitung, GPLv3; `.apworld` und EXE als GitHub-Release-Assets. Der Fork bleibt Quelle für Logik und Patcher | entschieden 2026-11-25 |
