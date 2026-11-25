@@ -63,14 +63,24 @@ def test_tools_zip_is_deterministic(tmp_path: Path) -> None:
         assert archive.read("wit/bin/wit.exe") == b"wit/bin/wit.exe"
 
 
-def test_tools_zip_has_what_the_patcher_needs_and_no_mp3update() -> None:
+def test_tools_zip_has_what_the_patcher_needs_including_mp3update() -> None:
     tools_py = (br.REPO_ROOT / br.TOOLS_PY).read_text(encoding="utf-8")
     required = next(
         ast.literal_eval(node.value) for node in ast.parse(tools_py).body
         if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", None) == "REQUIRED_FILES"
     )
     assert set(required) <= set(br.TOOLS_FILES)
-    assert not any("MP3Update" in name or "hpatchz" in name for name in br.TOOLS_FILES)
+    build_py = (br.REPO_ROOT / br.WORLD_DIR / "patcher" / "build.py").read_text(encoding="utf-8")
+    paks = next(
+        ast.literal_eval(node.value) for node in ast.parse(build_py).body
+        if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", None) == "MP3_UPDATE_PAKS"
+    )
+    assert {name for name in br.TOOLS_FILES if name.startswith("MP3Update/")} == {
+        f"MP3Update/{name}.hdiff" for name in (*paks, "main")
+    }
+    assert {"hpatchz.exe", "licenses/MP3Update-LICENSE.txt", "licenses/HDiffPatch-LICENSE.txt",
+            "licenses/bzip2-LICENSE.txt", "licenses/libmd5-LICENSE.txt", "licenses/LZMA-SDK-LICENSE.txt",
+            "licenses/zstd-LICENSE.txt"} <= set(br.TOOLS_FILES)
     assert all(name.startswith("licenses/") for name in br.TOOLS_FILES if "LICENSE" in name or "GPL" in name)
     for source in br.TOOLS_FILES.values():  # every source is in the real repo
         assert (br.REPO_ROOT / source).is_file(), source

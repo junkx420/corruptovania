@@ -46,11 +46,24 @@ Licence texts are in the folder "licenses". Each component keeps its own licence
 6. dummy_attract/attract01.thp, dummy_attract/Attract02.thp
    Empty files that replace the game's attract videos.
 
+7. MP3Update/*.hdiff
+   MP3Update v7.2 by MrMiguel211, including the Deflicker DOL patch (main.hdiff), under the MIT licence
+   (licenses/MP3Update-LICENSE.txt). All eleven diffs match the author's release ZIP byte for byte.
+   Source: https://github.com/MrMiguel211/MP3Update/releases/tag/MP3Update_v7.2
+
+8. hpatchz.exe
+   HDiffPatch v4.6.9 (official Windows x64 build) by HouSisong, MIT licence. The upstream notice
+   (licenses/HDiffPatch-LICENSE.txt) also covers libdivsufsort (Yuta Mori, MIT).
+   The Windows project includes bzip2 1.0.8 (licenses/bzip2-LICENSE.txt), libmd5
+   (licenses/libmd5-LICENSE.txt), LZMA SDK 23.01 (public domain, licenses/LZMA-SDK-LICENSE.txt),
+   zlib 1.2.11 (licenses/zlib-LICENSE.txt) and Zstandard 1.5.5 with xxHash (BSD terms, licenses/zstd-LICENSE.txt).
+   Binary and source: https://github.com/sisong/HDiffPatch/releases/tag/v4.6.9
+
 Corresponding source for the GPL/LGPL programs
 ----------------------------------------------
 
 The complete corresponding source of wit.exe and cygwin1.dll is attached to the same GitHub release as this ZIP,
-https://github.com/junkx420/Prime3AP/releases/tag/v0.3.0 (also listed with their SHA-256 in that release's
+https://github.com/junkx420/Prime3AP/releases/tag/v0.4.0 (also listed with their SHA-256 in that release's
 SHA256SUMS.txt):
 
 - wiimms-iso-tools-r8638-src.tar.gz (source of wit/bin/wit.exe, GPL-2.0)

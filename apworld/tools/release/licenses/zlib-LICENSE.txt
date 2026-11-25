@@ -1,4 +1,4 @@
-Applies to: wit/bin/cygz.dll (zlib 1.2.11, Cygwin build)
+Applies to: wit/bin/cygz.dll (Cygwin build) and hpatchz.exe (zlib 1.2.11)
 
 Copyright notice:
 

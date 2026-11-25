@@ -43,16 +43,16 @@ TOOLS_URL_ENV = "MP3AP_TOOLS_URL"
 RELEASE_REPO = "junkx420/Prime3AP"
 # Release whose assets contain the tools ZIP this code expects. Tools change rarely, so later releases may keep
 # pointing here. build_release.py rebuilds the ZIP and refuses to continue if its hash differs from TOOLS_ZIP_SHA256.
-TOOLS_RELEASE_TAG = "v0.3.0"
+TOOLS_RELEASE_TAG = "v0.4.0"
 TOOLS_ZIP_NAME = "metroidprime3-tools-win.zip"
-TOOLS_ZIP_SHA256 = "cdd5a5b727890b6031c7a5e5f61280b0823a4f3c5095deb4446b47b34e0e2b3c"
+TOOLS_ZIP_SHA256 = "ae2a7971f8d0d21847d18ebb9c2bd0c2988bba423f89f23404e50b7555e5c12d"
 TOOLS_URL = f"https://github.com/{RELEASE_REPO}/releases/download/{TOOLS_RELEASE_TAG}/{TOOLS_ZIP_NAME}"
 RELEASE_PAGE = f"https://github.com/{RELEASE_REPO}/releases/tag/{TOOLS_RELEASE_TAG}"
 
 CACHE_DIR_NAME = "metroidprime3_tools"
 MARKER_NAME = "metroidprime3_tools.sha256"  # written after a verified extraction, holds TOOLS_ZIP_SHA256
 
-# What build.Toolchain needs. The tools ZIP holds these plus wit's Cygwin DLLs and the licence texts.
+# Base helpers for all regions. The NTSC-U diffs and hpatchz are validated by build when requested.
 REQUIRED_FILES = (
     "MP3Randomizer.exe",
     "lzokay/lzokay.dll",

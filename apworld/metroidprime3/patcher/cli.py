@@ -14,6 +14,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m worlds.metroidprime3.patcher",
         description="Metroid Prime 3 Archipelago patch tool (PAL RM3P01, NTSC-U RM3E01).",
+        epilog="NTSC-U defaults to both MP3Update and Deflicker. Use the two patch flags to select either or both.",
     )
     parser.add_argument("--patch", type=Path,
                         help="AP patch data: .apmp3 from Archipelago or JSON (docs/AP_PATCH_TOOL.md)")
@@ -25,8 +26,10 @@ def _parser() -> argparse.ArgumentParser:
                         help="cache folder for the downloaded tools (default: <Archipelago>/metroidprime3_tools)")
     parser.add_argument("--temp-dir", type=Path, default=None, help="where to extract (needs ~2x ISO size free)")
     parser.add_argument("--no-verify", action="store_true", help="skip reading back game ID and seed ID")
-    parser.add_argument("--mp3-update", action="store_true", help="apply MP3Update to the PAKs (NTSC-U only)")
-    parser.add_argument("--disable-deflicker", action="store_true", help="apply the Deflicker DOL patch (NTSC-U only)")
+    update = parser.add_mutually_exclusive_group()
+    update.add_argument("--no-mp3-update", action="store_true", help="skip both MP3Update and Deflicker")
+    update.add_argument("--mp3-update", action="store_true", help="select the MP3Update PAK patches (NTSC-U only)")
+    parser.add_argument("--disable-deflicker", action="store_true", help="select the Deflicker DOL patch (NTSC-U only)")
     parser.add_argument("--dry-run", action="store_true", help="only validate --patch and print the MP3Randomizer data")
     parser.add_argument("--read-seed-id", type=Path, metavar="ISO_OR_DOL",
                         help="print the seed ID of a patched ISO or main.dol and exit")
@@ -63,10 +66,13 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if not args.iso or not args.out:
             parser.error("--iso and --out are required")
+        if args.no_mp3_update and args.disable_deflicker:
+            parser.error("--no-mp3-update cannot be used with --disable-deflicker")
 
         result = build.patch_iso(
             data, args.iso, args.out, tools_dir=_tools(args), temp_dir=args.temp_dir, verify=not args.no_verify,
-            mp3_update=args.mp3_update, disable_deflicker=args.disable_deflicker,
+            mp3_update=False if args.no_mp3_update else args.mp3_update or None,
+            disable_deflicker=args.disable_deflicker or None,
         )
     except (patch_data.PatchDataError, build.PatchToolError, ValueError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)

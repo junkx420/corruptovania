@@ -11,5 +11,8 @@ Offline install, choose one:
 
 Requirement: the Microsoft Visual C++ 2015-2022 Redistributable (nodtool needs it; Dolphin needs it too).
 
+For NTSC-U discs (RM3E01), Open Patch applies MP3Update and Deflicker by default. Set mp3update: false under
+metroidprime3_options in host.yaml to skip both.
+
 Contents and licences: THIRD-PARTY-NOTICES.txt and the folder "licenses".
 Project: https://github.com/junkx420/Prime3AP

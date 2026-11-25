@@ -50,30 +50,35 @@ followed by `00000001 C0000000`, read 70 `>III` records and compare the derefere
 
 ## ISO builds
 
-- Default NTSC-U build from a fresh Archipelago 0.6.8 solo seed (`64406527113896098792`, slot 1) returned game ID
+- The T33 NTSC-U build without MP3Update from a fresh Archipelago 0.6.8 solo seed (`64406527113896098792`, slot 1) returned game ID
   `RM3E01` and seed ID `6a837c358cfdf26f11bde78160b301cd` on read-back.
 - The same NTSC-U build with `--mp3-update --disable-deflicker` also passed ISO and seed-ID read-back. Compared with
-  the default build of that seed, the extracted result has the same 99 primary flag tuples. Its generated details
+  the build without the patches, the extracted result has the same 99 primary flag tuples. Its generated details
   record a longer activation path for location 72 and an extra relay (byte 15) for location 76.
 - The PAL example ISO built before and after T33 with the same original, patch JSON and helper binaries has matching
   SHA-256 `66b9e9c310c2031f5423c73f535a9a806bcd6b092aef529b4e9ebeb53372272a`.
 
-### Optional tools package contents
+### NTSC-U defaults and tools package (T34)
 
 MP3Update needs `hpatchz.exe` and ten files in `MP3Update/` (`FrontEnd.hdiff`, `InGameAudio.hdiff`, `NoARAM.hdiff`,
 `Metroid1.hdiff`, `Metroid3.hdiff`, `Metroid4.hdiff`, `Metroid5.hdiff`, `Metroid6.hdiff`, `Metroid7.hdiff` and
 `UniverseArea.hdiff`). Disable Deflicker uses the same executable with `MP3Update/main.hdiff`. The patcher applies
 the selected diffs to the extracted workspace before randomizing and stamping the seed ID.
 
-The checkout carries the MP3Update MIT notice as `MIT-LICENSE.txt` and HDiffPatch's MIT notice as `LICENSE.txt` in
-`randovania/data/gollop_mp3_patcher/`. A later tools ZIP would need both notices, provenance for the exact distributed
-diffs and binary, and refreshed asset digests and patcher verification metadata. T34 tracks packaging.
-[MP3Update MIT notice](https://github.com/MrMiguel211/MP3Update/blob/main/MIT-LICENSE.txt),
-[HDiffPatch license](https://github.com/sisong/HDiffPatch/blob/master/LICENSE).
+Open Patch applies both patches by default to `RM3E01`. Set `metroidprime3_options.mp3update: false` in `host.yaml`
+to skip both, or use `--no-mp3-update` on the CLI. PAL `RM3P01` uses the original six build steps.
+The tools ZIP prepared for v0.4.0 includes the eleven diffs, `hpatchz.exe` and the licence notices.
+See [AP_APWORLD_DEV.md](AP_APWORLD_DEV.md#ntsc-u-patch-redistribution-t34) for provenance.
+
+T34 rebuilt seed `64406527113896098792`, slot 1, from its `.apmp3` through Archipelago 0.6.8 Open Patch with the
+new tools ZIP installed and hash-checked. The build showed all seven steps and verified game ID `RM3E01` and seed
+ID `6a837c358cfdf26f11bde78160b301cd` on read-back. The output and a separate Open Patch build with
+`mp3update: false` matched the SHA-256 of the corresponding T33 builds (`6b7cee6b…` with both patches,
+`41f4a7f3…` with both off). The real PAL rebuild matched the pre-T33 SHA-256 above.
 
 ## Live smoke test
 
-On 2026-11-25, the default build booted in PrimeHack and a new game reached G.F.S. Valhalla, Docking Bay 5. The local
+On 2026-11-25, the T33 build without MP3Update booted in PrimeHack and a new game reached G.F.S. Valhalla, Docking Bay 5. The local
 Archipelago 0.6.8 server and client agreed on the expected seed ID. A read-only RAM probe found `GS = 0x80A46080`,
 world `0xC133F919C108BDF9`, `PS = 0x809934C0` with `PowerBeam.capacity = 1`, and CPlayer `0x80B87B80` with vtable
 `0x80592C78`. The client found all 14 worlds' flag blocks, including Valhalla at `0x809F11E0` with 198 relays.

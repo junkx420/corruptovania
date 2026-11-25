@@ -62,8 +62,7 @@ IGNORED_SUFFIXES = {".sfc", ".z64", ".n64", ".nes", ".smc", ".sms", ".gb", ".gbc
 
 ZIP_DATE = (2026, 1, 1, 0, 0, 0)
 
-# Path in the tools ZIP -> path in the repo. Only what patcher/build.py runs (PAL, no MP3Update/Deflicker, so no
-# hpatchz/MP3Update) plus the DLLs wit.exe imports (PE import table: cygwin1, cygcrypto-1.1, cygncursesw-10, cygz).
+# Path in the tools ZIP -> path in the repo. Patch helpers (including NTSC-U diffs) and their notices.
 TOOLS_FILES = {
     "MP3Randomizer.exe": f"{TOOLS_SRC}/MP3Randomizer.exe",
     "lzokay/lzokay.dll": f"{TOOLS_SRC}/lzokay/lzokay.dll",
@@ -75,6 +74,14 @@ TOOLS_FILES = {
     "wit/bin/cygz.dll": f"{TOOLS_SRC}/wit/bin/cygz.dll",
     "dummy_attract/attract01.thp": f"{TOOLS_SRC}/dummy_attract/attract01.thp",
     "dummy_attract/Attract02.thp": f"{TOOLS_SRC}/dummy_attract/Attract02.thp",
+    "hpatchz.exe": f"{TOOLS_SRC}/hpatchz.exe",
+    **{
+        f"MP3Update/{name}.hdiff": f"{TOOLS_SRC}/MP3Update/{name}.hdiff"
+        for name in (
+            "FrontEnd", "InGameAudio", "NoARAM", "Metroid1", "Metroid3", "Metroid4", "Metroid5", "Metroid6",
+            "Metroid7", "UniverseArea", "main",
+        )
+    },
     "README.txt": f"{RELEASE_DIR}/README-tools.txt",
     "THIRD-PARTY-NOTICES.txt": f"{RELEASE_DIR}/THIRD-PARTY-NOTICES.txt",
     "licenses/MP3Randomizer-LICENSE.txt": f"{TOOLS_SRC}/LICENSE",
@@ -88,6 +95,12 @@ TOOLS_FILES = {
     "licenses/openssl-1.1.1-LICENSE.txt": f"{RELEASE_DIR}/licenses/openssl-1.1.1-LICENSE.txt",
     "licenses/ncurses-LICENSE.txt": f"{RELEASE_DIR}/licenses/ncurses-LICENSE.txt",
     "licenses/zlib-LICENSE.txt": f"{RELEASE_DIR}/licenses/zlib-LICENSE.txt",
+    "licenses/MP3Update-LICENSE.txt": f"{TOOLS_SRC}/MIT-LICENSE.txt",
+    "licenses/HDiffPatch-LICENSE.txt": f"{TOOLS_SRC}/LICENSE.txt",
+    "licenses/bzip2-LICENSE.txt": f"{RELEASE_DIR}/licenses/bzip2-LICENSE.txt",
+    "licenses/libmd5-LICENSE.txt": f"{RELEASE_DIR}/licenses/libmd5-LICENSE.txt",
+    "licenses/LZMA-SDK-LICENSE.txt": f"{RELEASE_DIR}/licenses/LZMA-SDK-LICENSE.txt",
+    "licenses/zstd-LICENSE.txt": f"{RELEASE_DIR}/licenses/zstd-LICENSE.txt",
 }
 
 DEFAULT_EXAMPLE_YAML = REPO_ROOT.parent / "Prime3AP" / "examples" / "Metroid Prime 3 Corruption.yaml"

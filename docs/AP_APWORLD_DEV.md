@@ -128,7 +128,7 @@ ammo without a launcher). Irrelevant for the logic, because expansions are not p
 | `regions.py` | one AP region per logic node, entrances, event locations, precomputation "reachable with all items" |
 | `options.py` | `MP3Options` = only Archipelago's default options (E3) |
 | `output.py` | `.apmp3`: `MP3Container` (`APPatch`), `displayed_pickups`, `write_patch_file` (T05b) |
-| `settings.py` | `MP3Settings` = section `metroidprime3_options` of the `host.yaml` (original ISO, tools folder, output folder) |
+| `settings.py` | `MP3Settings` = section `metroidprime3_options` of the `host.yaml` (original ISO, tools folder, output folder, NTSC-U MP3Update/Deflicker) |
 | `open_patch.py` | launcher: `.apmp3` → build ISO → start client (T05b, section 6) |
 | `archipelago.json`, `requirements.txt` | manifest and dependency for the packed `.apworld` (section 7) |
 
@@ -222,16 +222,18 @@ Sequence (`open_patch.patch_and_launch`; the launcher uses a separate process fo
 1. Read the `.apmp3` (`patcher.patch_data.read_container`). Patch errors go to the log and to an error dialog in GUI mode.
 2. Original ISO from the `host.yaml`, `metroidprime3_options.iso_file`. If the file is missing, a file dialog opens
    ("Metroid Prime 3: Corruption ISO (Wii PAL RM3P01, unmodified)"); the chosen path is saved in the `host.yaml` at
-   once. Only the first 6 bytes are checked (game ID `RM3P01`; `RM3E01`/`RM3J01` with a warning from the patch tool),
+   once. Only the first 6 bytes are checked (game IDs `RM3P01` and `RM3E01`; `RM3J01` with a warning from the patch tool),
    no hash: that would read 4.7 GB on every access to the setting. With `--nogui`, set `iso_file` in `host.yaml` before running.
-3. Target ISO `<name of the .apmp3>.iso` next to the `.apmp3` (or in `output_folder`). If an existing ISO there already
-   carries this slot's seed ID, it is not patched again (a second double click starts the client at once).
+3. Target ISO `<name of the .apmp3>.iso` next to the `.apmp3` (or in `output_folder`). It is reused when the seed
+   ID, region and NTSC-U patch setting match. For NTSC-U, a companion `.iso.mp3update` file records the setting,
+   ISO size and modification time. An older NTSC-U ISO without this file is rebuilt on its next Open Patch.
 4. Patch tool (`patcher.build.patch_iso`, ~40 s). It first finds the helper programs (`patcher.tools.find_tools`,
    `AP_PATCH_TOOL.md` section 3.1): `tools_folder` (only if it contains `MP3Randomizer.exe`, otherwise ignored with a
    log warning), `$MP3AP_TOOLS_DIR`, the cache `<Archipelago>/metroidprime3_tools`, a Corruptovania checkout, a tools
    ZIP placed into the cache by hand, else it downloads `metroidprime3-tools-win.zip` from the Prime3AP release
    (SHA-256 fixed in the code). Download, check and extraction appear in the same window before step 1; errors
-   (offline, wrong hash) name the manual steps. A `tkinter` window displays the tool's six steps and briefly shows
+   (offline, wrong hash) name the manual steps. A `tkinter` window displays the tool's steps, including step 3 of 7
+   when applying both NTSC-U patches, and briefly shows
    `Done` after verification. Archipelago 0.6.8 starts **Open Patch** in a separate launcher process, so this window uses
    the same toolkit as Archipelago's file picker and can run independently of the launcher's Kivy window. The patcher
    runs on a worker thread so the window stays responsive. With `--nogui`, progress and errors go only to the console
@@ -246,6 +248,7 @@ metroidprime3_options:
   iso_file: "C:\\...\\mp3.iso"   # original ISO, asked for at the first .apmp3
   tools_folder: ""              # empty: download once into <Archipelago>/metroidprime3_tools; set only for offline installs
   output_folder: ""             # empty: ISO next to the .apmp3
+  mp3update: true                # set to false to skip both MP3Update and Deflicker on NTSC-U
 ```
 
 **Checked (T05b, command line):** `Launcher.py ..\out\AP_38224278823687041413_P2_Samus.apmp3 -- --nogui` with
@@ -351,7 +354,7 @@ section 6 step 4).
 | Asset | Content |
 |---|---|
 | `metroidprime3.apworld` | `apworld/metroidprime3` packed like "Build APWorlds" (same ignore rules as `data/GLOBAL.apignore` of AP 0.6.8, manifest = `archipelago.json` + `compatible_version` 7 + `version` 7) |
-| `metroidprime3-tools-win.zip` | the helper programs the patch tool runs (PAL, no MP3Update/Deflicker), `README.txt`, `THIRD-PARTY-NOTICES.txt`, `licenses/` |
+| `metroidprime3-tools-win.zip` | the patch helpers, MP3Update and Deflicker diffs from v0.4.0 onward, `README.txt`, `THIRD-PARTY-NOTICES.txt`, `licenses/` |
 | `metroidprime3-example.yaml` | example YAML from the Prime3AP repo (asset names have no spaces: GitHub turns them into dots, which would break `SHA256SUMS.txt`) |
 | `wiimms-iso-tools-r8638-src.tar.gz` | corresponding source of `wit.exe` (GPL-2.0): unmodified GitHub archive of [Wiimm/wiimms-iso-tools](https://github.com/Wiimm/wiimms-iso-tools) commit `fc1c0b8` "WIT v3.05a" (`project/revision.sh`: `revision=8638`) |
 | `cygwin-3.1.7-1-src.tar.xz` | corresponding source of `cygwin1.dll` (LGPL-3.0+): unmodified Cygwin source package from the official archive `sourceware.org/pub/cygwin-archive/20221123/x86/` (current mirrors only keep recent versions; the source package is the same for x86 and x86_64; SHA-512 matches that folder's `sha512.sum`) |
@@ -443,17 +446,37 @@ All licences allow redistribution. The ZIP carries every licence text and `THIRD
 | `wit/bin/cygncursesw-10.dll` | ncurses 6.1.20190727 | X11 style | keep the notice |
 | `wit/bin/cygz.dll` | zlib 1.2.11 | zlib | none for binaries (notice included anyway) |
 
-Licence texts in the repo: the four of `randovania/data/gollop_mp3_patcher` (`LICENSE`, `lzokay/LICENSE`,
+Licence texts for the v0.3.0 ZIP: the four of `randovania/data/gollop_mp3_patcher` (`LICENSE`, `lzokay/LICENSE`,
 `nodtool/LICENSE`, `wit/gpl-2.0.txt`) plus `apworld/tools/release/licenses/` (GPL-3.0, LGPL-3.0, .NET runtime licence
-and notices from the NuGet runtime pack, OpenSSL 1.1.1, ncurses, zlib). Not shipped (not needed): `hpatchz.exe`
-(HDiffPatch, MIT), `MP3Update/` (MrMiguel211, MIT), the rest of `wit/bin`. Not included: the Visual C++ runtime
-(players install Microsoft's redistributable; Dolphin needs it too).
+and notices from the NuGet runtime pack, OpenSSL 1.1.1, ncurses, zlib). Players install Microsoft's Visual C++
+redistributable separately. Dolphin needs it too.
 
 GPL-2.0 (wit) and LGPL-3.0 (Cygwin) require the corresponding source to be available. It is attached to the same
 release as the tools ZIP (`wiimms-iso-tools-r8638-src.tar.gz`, `cygwin-3.1.7-1-src.tar.xz`, see "Assets"), which
 counts as equivalent access from the same place (GPL-2.0 section 3, GPL-3.0 section 6d). The tools ZIP's
 `THIRD-PARTY-NOTICES.txt` points to these assets. When the tools ZIP moves to a new release (`TOOLS_RELEASE_TAG`), the
 source archives must be attached there too.
+
+### NTSC-U patch redistribution (T34)
+
+The Windows tools ZIP prepared for v0.4.0 includes the following files with their copyright and licence notices.
+The v0.3.0 release and its existing ZIP predate this change.
+
+| Files | Licence and evidence |
+|---|---|
+| Ten `MP3Update/*.hdiff` PAK patches | MIT, copyright MrMiguel211. Every file matches the corresponding entry in the author's [MP3Update v7.2 ZIP](https://github.com/MrMiguel211/MP3Update/releases/download/MP3Update_v7.2/MP3Update_v7.2.zip) byte for byte, including the older `FrontEnd.hdiff` in the release asset. The same archive supplies `MIT-LICENSE.txt`, which expressly grants redistribution with the notice. Its bytes match the checked-in notice in Git. |
+| `MP3Update/main.hdiff` (Deflicker) | Same MIT grant. The exact file is included in that licensed v7.2 ZIP and was introduced by MrMiguel211 in [Deflicker DOL Patch](https://github.com/MrMiguel211/MP3Update/commit/20a066020ee829c17dceca21578a48e30c75eebe). |
+| `hpatchz.exe` | Exact match for `windows64/hpatchz.exe` in the official [HDiffPatch v4.6.9 Windows release](https://github.com/sisong/HDiffPatch/releases/tag/v4.6.9), SHA-256 `66d1c1427ad34f2e9aa60a06b3d48bfbed296fae3aad396ca4240a1e67bfc254`. The [v4.6.9 MIT notice](https://github.com/sisong/HDiffPatch/blob/v4.6.9/LICENSE) covers HDiffPatch and libdivsufsort and matches the checkout's `LICENSE.txt` after line-ending normalization. The Windows project and the matching source archive list bzip2 1.0.8, libmd5, LZMA SDK 23.01, zlib 1.2.11 and Zstandard 1.5.5 with xxHash. The ZIP includes their permissive notices and uses the BSD terms for Zstandard/xxHash. |
+
+Verification on 2026-11-25 compared the author's actual release asset (SHA-256
+`51e3517c2d4f26a015200a78eb8ce8be574a869c07c049c46885380472cda3da`) to the checked-in assets. The byte matches
+identify the exact patch build used by T33. The MIT grant covers the author's distributed changes. The tools
+ZIP contains binary diffs and helpers. A player supplies a clean game disc image and the tools apply the diffs locally.
+
+T34 prepares a deterministic v0.4.0 tools ZIP with SHA-256
+`ae2a7971f8d0d21847d18ebb9c2bd0c2988bba423f89f23404e50b7555e5c12d`.
+Until v0.4.0 is published, use the helper folder from a checkout or build a local ZIP with
+`python apworld/tools/release/build_release.py --tools-only` and place it into the Archipelago tools cache.
 
 ### Checked (T28)
 

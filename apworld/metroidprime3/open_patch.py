@@ -3,7 +3,7 @@
 Flow (docs/AP_APWORLD_DEV.md, "Launcher"): read the container -> original ISO from host.yaml
 (``metroidprime3_options.iso_file``; on first use a file dialog asks and the path is saved) -> patch tool
 (``patcher.build.patch_iso``) writes ``<name>.iso`` next to the ``.apmp3`` (or into ``output_folder``); if that ISO
-already carries this slot's seed ID it is reused -> Metroid Prime 3 Client with ``--connect <server>`` (if the
+already matches this slot's seed and patch settings it is reused -> Metroid Prime 3 Client with ``--connect <server>`` (if the
 container names one) and ``--name <player>``.
 """
 
@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from queue import Empty, SimpleQueue
 
-from .patcher import build, patch_data
+from .patcher import build, patch_data, seed_id
 
 logger = logging.getLogger("MetroidPrime3Patch")
 
@@ -60,15 +60,28 @@ def tools_dir(configured: str) -> Path | None:
     return None
 
 
-def is_up_to_date(out: Path, data: patch_data.PatchData, tools: Path | None) -> bool:
+def _update_stamp(out: Path, mp3update: bool) -> str:
+    # Also detect an ISO replaced outside Open Patch, such as a CLI rebuild of the same seed.
+    stat = out.stat()
+    return f"{mp3update} {stat.st_size} {stat.st_mtime_ns}\n"
+
+
+def is_up_to_date(out: Path, data: patch_data.PatchData, tools: Path | None, iso: Path, mp3update: bool) -> bool:
     if not out.is_file():
         return False
     try:
-        _, found = build.read_seed_id_from_iso(out, tools)
+        version, found = build.read_seed_id_from_iso(out, tools)
+        if found != data.seed_id:
+            return False
+        if iso.exists() and build.read_game_id(iso) != version.game_id:
+            return False
+        if version == seed_id.version_for_game_id("RM3E01"):
+            stamp = out.with_suffix(".iso.mp3update")
+            return stamp.read_text(encoding="ascii") == _update_stamp(out, mp3update)
     except (build.PatchToolError, ValueError, OSError) as error:
         logger.info("Existing %s not readable (%s), rebuilding", out, error)
         return False
-    return found == data.seed_id
+    return True
 
 
 def _patch_with_window(patch: Callable[[build.ProgressCallback], build.PatchResult]) -> build.PatchResult:
@@ -142,17 +155,27 @@ def make_iso(patch_file: Path, *, gui: bool = True) -> tuple[Path, dict]:
     # Group resolves "" to the Archipelago folder, so only use the resolved path if host.yaml names one.
     tools = tools_dir(str(options.tools_folder) if raw_value(options, "tools_folder") else "")
     out = output_path(patch_file, raw_value(options, "output_folder"))
+    mp3update = getattr(options, "mp3update", True)
+    if not isinstance(mp3update, bool):
+        raise build.PatchToolError("metroidprime3_options.mp3update in host.yaml must be true or false.")
 
-    if is_up_to_date(out, data, tools):
+    if is_up_to_date(out, data, tools, iso, mp3update):
         logger.info("%s already has seed ID %s, not patching again", out, data.seed_id.hex())
         return out, manifest
     logger.info("Patching %s -> %s (player %s, slot %d, seed %s)", iso, out, data.player_name, data.slot,
                 data.seed_name)
 
     def patch(progress: build.ProgressCallback) -> build.PatchResult:
-        return build.patch_iso(data, iso, out, tools_dir=tools, progress=progress)
+        if mp3update:
+            return build.patch_iso(data, iso, out, tools_dir=tools, progress=progress)
+        return build.patch_iso(data, iso, out, tools_dir=tools, progress=progress, mp3_update=False)
 
     result = _patch_with_window(patch) if gui else patch(logger.info)
+    if result.game_id == "RM3E01":
+        try:
+            out.with_suffix(".iso.mp3update").write_text(_update_stamp(out, mp3update), encoding="ascii", newline="\n")
+        except OSError as error:
+            logger.warning("Could not save the MP3Update setting for %s: %s", out, error)
     logger.info("Done: %s, game ID %s, seed ID %s", result.output, result.game_id, result.seed_id.hex())
     return out, manifest
 

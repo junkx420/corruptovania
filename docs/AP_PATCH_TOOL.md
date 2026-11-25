@@ -9,7 +9,7 @@ Basis: `AP_PATCHER_CHANGES.md` (T16, `--ap-mode`, APItem), `AP_PATCHER_NOTES.md`
 >   (section 2), and an unmodified Wii standalone PAL `RM3P01` or NTSC-U `RM3E01` ISO.
 > - Same sequence as the Corruptovania exporter (extract, replace attract videos, patch paks, build ISO), but
 >   MP3Randomizer always runs with `--ap-mode` and the seed ID goes into the version-specific build info of `main.dol`
->   (T18). MP3Update and Disable Deflicker are optional NTSC-U steps and default to off (T33).
+>   (T18). NTSC-U builds apply MP3Update and the Deflicker patch by default (T34).
 > - Standard library only: no runtime dependency on Randovania or Archipelago. The letter table and the
 >   checksum are copies of our own; a test compares them with the Randovania original.
 > - The checked-in `randovania/data/gollop_mp3_patcher/MP3Randomizer.exe` is now the T16 state (win-x86, one file).
@@ -25,8 +25,8 @@ In the Archipelago clone (APWorld linked in via junction, `AP_APWORLD_DEV.md` se
 
 Whether `.apmp3` or JSON, the tool recognises by the content (ZIP or not), not by the extension. More convenient for players:
 open the `.apmp3` in the Archipelago launcher (`AP_APWORLD_DEV.md` section 6); the launcher calls exactly this tool.
-Open Patch reuses an existing ISO with a matching seed ID. To build the same seed for both regions, use separate output
-folders or distinct CLI `--out` paths.
+Open Patch reuses an existing ISO with a matching seed ID, region and NTSC-U patch setting. To keep builds of the
+same seed side by side, use separate output folders or distinct CLI `--out` paths.
 
 Without Archipelago (any Python ≥ 3.10, e.g. the repo venv), from the repo root:
 
@@ -46,8 +46,9 @@ which needs Archipelago. The folder call only loads the package `patcher`.)
 | `--tools-cache` | cache folder for the downloaded tools (default: `<Archipelago>/metroidprime3_tools`, outside Archipelago `%LOCALAPPDATA%\metroidprime3_tools`) |
 | `--temp-dir` | place for the extraction (default: `%TEMP%`; needs about 2 × ISO size free) |
 | `--no-verify` | do not read back game ID and seed ID in the target ISO |
-| `--mp3-update` | apply the ten MP3Update PAK patches before randomizing (NTSC-U only, default off) |
-| `--disable-deflicker` | apply the Deflicker patch to `main.dol` before writing the seed ID (NTSC-U only, default off) |
+| `--no-mp3-update` | skip both MP3Update and Deflicker |
+| `--mp3-update` | explicitly select the ten MP3Update PAK patches before randomizing (NTSC-U only) |
+| `--disable-deflicker` | explicitly select the Deflicker patch to `main.dol` before writing the seed ID (NTSC-U only) |
 | `--dry-run` | only check `--patch` and print the data for MP3Randomizer |
 | `--read-seed-id <iso\|dol>` | print the seed ID of an ISO or a `main.dol` and exit |
 
@@ -124,8 +125,11 @@ Hypermode there, the patcher never touches location 0 anyway.
 
 The patch tool uses the default suit and door/welding colours, skips the Phaaze shortcut and sets
 `--hyper-hints --fast-flying` as in the exporter. AP mode disables the missile and ship-missile requirements
-(E3/E7/E15). MP3Update and Disable Deflicker are local build options outside the patch data format. Both default to off,
-including in Open Patch.
+(E3/E7/E15). MP3Update and Deflicker are local build options outside the patch data format. The launcher reads
+`metroidprime3_options.mp3update` from `host.yaml` (default `true`). On NTSC-U, `false` skips both patches.
+On PAL the setting has no effect. In the CLI, omitting the patch flags uses the regional default. The two explicit
+patch flags can select either patch independently. From Python, leaving both keyword arguments unset uses the
+regional default. An explicit `True` or `False` for either argument selects only the patches explicitly enabled.
 
 **Defaults = starter preset**, as Randovania's `patch_data_factory` created them for seed IVG2J7OR
 (`build/seed/t01.patcher.json`): `starting_items` gives Power Beam, Charge Beam, Morph Ball Bombs, Scan Visor, Morph Ball,
@@ -218,7 +222,7 @@ MP3Randomizer, wit). `APPatch` is an `APPlayerContainer` with `procedure: "custo
 - The default build (T28) requires `MP3Randomizer.exe` (T16 build,
   see 4), `lzokay/lzokay.dll` (32-bit), `nodtool/nodtool.exe`, `wit/bin/wit.exe` with the four Cygwin DLLs it imports
   (`cygwin1.dll`, `cygcrypto-1.1.dll`, `cygncursesw-10.dll`, `cygz.dll`, from its PE import table),
-  `dummy_attract/attract01.thp`, `dummy_attract/Attract02.thp`. Optional NTSC-U patches also require `hpatchz.exe`
+  `dummy_attract/attract01.thp`, `dummy_attract/Attract02.thp`. The NTSC-U patches also require `hpatchz.exe`
   and the selected `.hdiff` files. If a required file is missing, the tool aborts before extracting.
 - `nodtool.exe` needs the Microsoft Visual C++ 2015-2022 Redistributable (`MSVCP140.dll`, `VCRUNTIME140.dll`). If it is
   missing, the error names the redistributable. `MP3Randomizer.exe` is self-contained (.NET runtime inside), `wit.exe`
@@ -239,7 +243,7 @@ MP3Randomizer, wit). `APPatch` is an `APPlayerContainer` with `procedure: "custo
 4. `randovania/data/gollop_mp3_patcher` of a Corruptovania checkout (developers; not present in a packed `.apworld`),
 5. `metroidprime3-tools-win.zip` placed into `<cache>/` by hand (offline install; the file is kept),
 6. download of the tools ZIP from the fixed URL
-   `https://github.com/junkx420/Prime3AP/releases/download/v0.3.0/metroidprime3-tools-win.zip` (`TOOLS_RELEASE_TAG`,
+   `https://github.com/junkx420/Prime3AP/releases/download/v0.4.0/metroidprime3-tools-win.zip` (`TOOLS_RELEASE_TAG`,
    `TOOLS_ZIP_NAME`). `$MP3AP_TOOLS_URL` replaces the URL (mirror or local test server); the hash is enforced anyway.
 
 `<cache>` = `<Archipelago>/metroidprime3_tools` (`Utils.user_path`, only if Archipelago already imported `Utils`, so the
@@ -260,11 +264,13 @@ put it unextracted into `<cache>`, or extract it anywhere and set `tools_folder`
 window. `read_seed_id_from_iso` never downloads unless `allow_download=True` (the CLI's `--read-seed-id` passes it; the
 launcher's "is the existing ISO up to date" check does not).
 
-### 3.2 Optional NTSC-U patches (T33)
+### 3.2 MP3Update and Deflicker on NTSC-U (T34)
 
-Use `--tools <folder>` with the normal helpers, `hpatchz.exe` and the selected files under `MP3Update/`. A Corruptovania
-checkout already has those files in `randovania/data/gollop_mp3_patcher`. The published T28 tools ZIP supplies the
-default build helpers. See [AP_NTSC.md](AP_NTSC.md) for the file list, redistribution notices and test results.
+The v0.4.0 tools ZIP is prepared with `hpatchz.exe` and the eleven `.hdiff` files. Until publication, point
+`metroidprime3_options.tools_folder` or `--tools` to `randovania/data/gollop_mp3_patcher` in a Corruptovania
+checkout, or use a locally built v0.4.0 tools ZIP. If an older or incomplete folder is selected, the patch tool lists
+the missing files before extracting the ISO. An enabled NTSC-U build shows `[3/7] Applying MP3Update and Deflicker...`
+in the progress window. See [AP_NTSC.md](AP_NTSC.md) for the file list and test results.
 
 ## 4. Checked-in MP3Randomizer EXE (T16 build)
 
