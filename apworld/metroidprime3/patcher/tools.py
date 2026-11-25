@@ -45,7 +45,7 @@ RELEASE_REPO = "junkx420/Prime3AP"
 # pointing here. build_release.py rebuilds the ZIP and refuses to continue if its hash differs from TOOLS_ZIP_SHA256.
 TOOLS_RELEASE_TAG = "v0.3.0"
 TOOLS_ZIP_NAME = "metroidprime3-tools-win.zip"
-TOOLS_ZIP_SHA256 = "77fc9f4b58b713b7b598712e2a85eaff69bb4fb616d098cbdf0c7c73e478a7b3"
+TOOLS_ZIP_SHA256 = "cdd5a5b727890b6031c7a5e5f61280b0823a4f3c5095deb4446b47b34e0e2b3c"
 TOOLS_URL = f"https://github.com/{RELEASE_REPO}/releases/download/{TOOLS_RELEASE_TAG}/{TOOLS_ZIP_NAME}"
 RELEASE_PAGE = f"https://github.com/{RELEASE_REPO}/releases/tag/{TOOLS_RELEASE_TAG}"
 

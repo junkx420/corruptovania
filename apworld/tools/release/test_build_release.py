@@ -102,9 +102,13 @@ def test_full_build_and_checks(tmp_path: Path) -> None:
     yaml = tmp_path / "Example.yaml"
     yaml.write_text("game: Metroid Prime 3: Corruption\n")
     out = tmp_path / "out"
+    sources = fake_sources(root, tmp_path / "sources")
     logs: list[str] = []
-    result = br.build_release("v0.3.0", out, br.WorktreeSource(root), example_yaml=yaml, log=logs.append)
-    assert set(result) == {"metroidprime3-tools-win.zip", "metroidprime3.apworld", "metroidprime3-example.yaml"}
+    result = br.build_release("v0.3.0", out, br.WorktreeSource(root), example_yaml=yaml, sources_dir=sources,
+                              log=logs.append)
+    assert set(result) == {"metroidprime3-tools-win.zip", "metroidprime3.apworld", "metroidprime3-example.yaml",
+                           "wit-src.tar.gz", "cygwin-src.tar.xz"}
+    assert (out / "wit-src.tar.gz").read_bytes() == b"wit source"
     assert not any(" " in name for name in result)  # GitHub renames assets with spaces
     sums = (out / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines()
     # sha256sum format, one line per asset, sorted by file name
@@ -112,9 +116,11 @@ def test_full_build_and_checks(tmp_path: Path) -> None:
     assert all(result[n] == hashlib.sha256((out / n).read_bytes()).hexdigest() for n in result)
 
     with pytest.raises(br.ReleaseError, match="does not match release tag v0.4.0"):
-        br.build_release("v0.4.0", out, br.WorktreeSource(root), example_yaml=None, log=logs.append)
+        br.build_release("v0.4.0", out, br.WorktreeSource(root), example_yaml=None, include_sources=False,
+                         log=logs.append)
     br.build_release("v0.4.0", out, br.WorktreeSource(root), example_yaml=None, allow_version_mismatch=True,
-                     log=logs.append)
+                     include_sources=False, log=logs.append)
+    assert any("source archives not included" in line for line in logs)
     assert any(line.startswith("WARNING: world_version 0.3.0") for line in logs)
     assert any("downloads the tools ZIP from release v0.3.0, not v0.4.0" in line for line in logs)
 
@@ -125,6 +131,54 @@ def test_tools_hash_mismatch(tmp_path: Path) -> None:
         br.build_release("v0.3.0", tmp_path / "out", br.WorktreeSource(root), example_yaml=None, log=print)
     result = br.build_release(None, tmp_path / "out", br.WorktreeSource(root), tools_only=True, log=print)
     assert result == {"metroidprime3-tools-win.zip": tools_sha(root)}
+
+
+def fake_sources(root: Path, sources_dir: Path) -> Path:
+    archives = {"wit-src.tar.gz": b"wit source", "cygwin-src.tar.xz": b"cygwin source"}
+    entries = [{"asset": name, "component": name, "url": f"https://example.invalid/{name}", "origin": "test",
+                "sha256": hashlib.sha256(data).hexdigest()} for name, data in archives.items()]
+    (root / br.SOURCE_ARCHIVES_JSON).parent.mkdir(parents=True, exist_ok=True)
+    (root / br.SOURCE_ARCHIVES_JSON).write_text(json.dumps(entries))
+    sources_dir.mkdir(parents=True, exist_ok=True)
+    for name, data in archives.items():
+        (sources_dir / name).write_bytes(data)
+    return sources_dir
+
+
+def test_source_archive_missing_wrong_hash_and_fetch(tmp_path: Path) -> None:
+    root = fake_repo(tmp_path / "repo")
+    sources = fake_sources(root, tmp_path / "sources")
+    entries = br.source_archives(br.WorktreeSource(root))
+    out = tmp_path / "out"
+    out.mkdir()
+
+    (sources / "wit-src.tar.gz").unlink()
+    with pytest.raises(br.ReleaseError, match="use --fetch-sources"):
+        br.provide_source_archives(entries, sources, out, allow_fetch=False, log=print)
+
+    requests = []
+
+    def opener(request, timeout):
+        requests.append(request.full_url)
+        return io.BytesIO(b"wit source")
+
+    names = br.provide_source_archives(entries, sources, out, allow_fetch=True, log=print, opener=opener)
+    assert names == ["wit-src.tar.gz", "cygwin-src.tar.xz"]
+    assert requests == ["https://example.invalid/wit-src.tar.gz"]  # the cached one is not fetched again
+    assert (sources / "wit-src.tar.gz").read_bytes() == b"wit source"
+
+    (sources / "cygwin-src.tar.xz").write_bytes(b"tampered")
+    with pytest.raises(br.ReleaseError, match="delete it and fetch again"):
+        br.provide_source_archives(entries, sources, out, allow_fetch=True, log=print, opener=opener)
+
+
+def test_real_source_archives_manifest() -> None:
+    entries = json.loads((br.REPO_ROOT / br.SOURCE_ARCHIVES_JSON).read_text(encoding="utf-8"))
+    assert {e["asset"] for e in entries} == {"wiimms-iso-tools-r8638-src.tar.gz", "cygwin-3.1.7-1-src.tar.xz"}
+    notices = (br.REPO_ROOT / br.RELEASE_DIR / "THIRD-PARTY-NOTICES.txt").read_text(encoding="utf-8")
+    for entry in entries:
+        assert entry["url"].startswith(("https://github.com/Wiimm/", "https://sourceware.org/pub/cygwin"))
+        assert entry["asset"] in notices and entry["sha256"] in notices
 
 
 def test_bad_tag() -> None:

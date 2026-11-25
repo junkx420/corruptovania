@@ -227,7 +227,12 @@ Sequence (`open_patch.patch_and_launch`; the launcher uses a separate process fo
    no hash: that would read 4.7 GB on every access to the setting. With `--nogui`, set `iso_file` in `host.yaml` before running.
 3. Target ISO `<name of the .apmp3>.iso` next to the `.apmp3` (or in `output_folder`). If an existing ISO there already
    carries this slot's seed ID, it is not patched again (a second double click starts the client at once).
-4. Patch tool (`patcher.build.patch_iso`, ~40 s). A `tkinter` window displays the tool's six steps and briefly shows
+4. Patch tool (`patcher.build.patch_iso`, ~40 s). It first finds the helper programs (`patcher.tools.find_tools`,
+   `AP_PATCH_TOOL.md` section 3.1): `tools_folder` (only if it contains `MP3Randomizer.exe`, otherwise ignored with a
+   log warning), `$MP3AP_TOOLS_DIR`, the cache `<Archipelago>/metroidprime3_tools`, a Corruptovania checkout, a tools
+   ZIP placed into the cache by hand, else it downloads `metroidprime3-tools-win.zip` from the Prime3AP release
+   (SHA-256 fixed in the code). Download, check and extraction appear in the same window before step 1; errors
+   (offline, wrong hash) name the manual steps. A `tkinter` window displays the tool's six steps and briefly shows
    `Done` after verification. Archipelago 0.6.8 starts **Open Patch** in a separate launcher process, so this window uses
    the same toolkit as Archipelago's file picker and can run independently of the launcher's Kivy window. The patcher
    runs on a worker thread so the window stays responsive. With `--nogui`, progress and errors go only to the console
@@ -240,7 +245,7 @@ Sequence (`open_patch.patch_and_launch`; the launcher uses a separate process fo
 ```yaml
 metroidprime3_options:
   iso_file: "C:\\...\\mp3.iso"   # original ISO, asked for at the first .apmp3
-  tools_folder: ""              # folder with MP3Randomizer.exe etc.; empty/without EXE: $MP3AP_TOOLS_DIR, otherwise repo
+  tools_folder: ""              # empty: download once into <Archipelago>/metroidprime3_tools; set only for offline installs
   output_folder: ""             # empty: ISO next to the .apmp3
 ```
 
@@ -252,6 +257,11 @@ metroidprime3_options:
 **T23 GUI check (development clone):** Rename any existing target ISO for the selected `.apmp3` to keep a backup.
 Run `.venv\Scripts\python.exe Launcher.py`, select **Open Patch**, and choose the `.apmp3`. Check that the patch window
 shows the numbered steps and `Done`, then that the Metroid Prime 3 Client opens.
+
+**Checked (T28, fresh install):** clean Archipelago 0.6.8 copy with only the packed `.apworld` in `custom_worlds`,
+`tools_folder: ""`, empty cache: `Launcher.py <x.apmp3> -- --nogui` downloaded the tools ZIP into
+`<Archipelago>/metroidprime3_tools/tools-<first 12 hex digits of the ZIP hash>`, built the ISO in 36 s and started the client (details in
+section "Release").
 
 ## 7. Packed `.apworld`
 
@@ -289,15 +299,18 @@ total time is determined by the other worlds. No action needed (no `.pyc` needed
 **Dependency:** Archipelago 0.6.8 does not install the `requirements.txt` of a packed `.apworld` itself
 (`ModuleUpdate.py` only reads `requirements.txt` of world folders). `dolphin-memory-engine` is available anyway: in the
 installed Archipelago through the bundled Wind Waker world, in the source Archipelago through `ModuleUpdate.py --yes`.
-The patch tool's helper programs are **not** in the `.apworld` (`AP_PATCH_TOOL.md` 6.2): set `tools_folder`
-or use a Corruptovania checkout.
+The patch tool's helper programs (31 MB) are deliberately not in the `.apworld`: the patch tool downloads the tools ZIP
+of the release on the first patch and caches it (section 6, step 4; `AP_PATCH_TOOL.md` section 3.1). For release
+builds use `apworld/tools/release/build_release.py` (section "Release"); it packs like "Build APWorlds" but from a Git
+commit.
 
 ## 8. Open
 
 - Tricks as an option (F9). The damage approximation (full energy per requirement) stays optimistic (T03).
-- Ship the patch helper programs (MP3Randomizer, nodtool, wit) with the release or download them (F10/E20).
-- While patching (~40 s) the launcher shows nothing (log only); a progress window is missing.
-- GUI path (file dialog, "Open Patch", double click) only described, not clicked by me.
+- ~~Ship the patch helper programs with the release or download them~~: done in T28 (download on first use).
+- ~~While patching the launcher shows nothing~~: progress window since T23 (also shows the T28 download).
+- ~~GUI path only described~~: "Open Patch" checked manually by the user (T05b, T23).
+- Patch tool and helper programs are Windows only; macOS/Linux would need other builds of the helpers.
 
 ## CI
 
@@ -331,8 +344,8 @@ to reproduce CI's skips. Pytest reports the fixture-dependent skips with `-rs`.
 
 Release repo: [junkx420/Prime3AP](https://github.com/junkx420/Prime3AP) (E20). Player guide there:
 `README.md`, `docs/INSTALL.md`, example YAML `examples/Metroid Prime 3 Corruption.yaml`. The packed `.apworld` still
-contains no helper programs; the patch tool downloads them on first use (T28, `AP_PATCH_TOOL.md` section 3.1). This
-supersedes the "helper programs not in the `.apworld`" notes in sections 6 to 8.
+contains no helper programs; the patch tool downloads them on first use (T28, `AP_PATCH_TOOL.md` section 3.1,
+section 6 step 4).
 
 ### Assets
 
@@ -341,14 +354,16 @@ supersedes the "helper programs not in the `.apworld`" notes in sections 6 to 8.
 | `metroidprime3.apworld` | `apworld/metroidprime3` packed like "Build APWorlds" (same ignore rules as `data/GLOBAL.apignore` of AP 0.6.8, manifest = `archipelago.json` + `compatible_version` 7 + `version` 7) |
 | `metroidprime3-tools-win.zip` | the helper programs the patch tool runs (PAL, no MP3Update/Deflicker), `README.txt`, `THIRD-PARTY-NOTICES.txt`, `licenses/` |
 | `metroidprime3-example.yaml` | example YAML from the Prime3AP repo (asset names have no spaces: GitHub turns them into dots, which would break `SHA256SUMS.txt`) |
-| `SHA256SUMS.txt` | `sha256sum` format over the three files |
+| `wiimms-iso-tools-r8638-src.tar.gz` | corresponding source of `wit.exe` (GPL-2.0): unmodified GitHub archive of [Wiimm/wiimms-iso-tools](https://github.com/Wiimm/wiimms-iso-tools) commit `fc1c0b8` "WIT v3.05a" (`project/revision.sh`: `revision=8638`) |
+| `cygwin-3.1.7-1-src.tar.xz` | corresponding source of `cygwin1.dll` (LGPL-3.0+): unmodified Cygwin source package from the official archive `sourceware.org/pub/cygwin-archive/20221123/x86/` (current mirrors only keep recent versions; the source package is the same for x86 and x86_64; SHA-512 matches that folder's `sha512.sum`) |
+| `SHA256SUMS.txt` | `sha256sum` format over all files above |
 
 ### Build
 
 From the Corruptovania root (plain Python ≥ 3.10, no Archipelago needed):
 
 ```powershell
-python apworld/tools/release/build_release.py --tag v0.3.0
+python apworld/tools/release/build_release.py --tag v0.3.0 --fetch-sources
 ```
 
 - Reads every input as a raw Git blob of `--ref` (default `HEAD`), so uncommitted work of other workers in the shared
@@ -361,6 +376,10 @@ python apworld/tools/release/build_release.py --tag v0.3.0
   version). After changing a helper program or a licence file: commit, run `--tools-only` (prints the hash), set
   `TOOLS_ZIP_SHA256` (and `TOOLS_RELEASE_TAG` if the ZIP goes to a new release), commit, build again.
 - Example YAML: `--example-yaml` (default `../Prime3AP/examples/Metroid Prime 3 Corruption.yaml`).
+- Source archives: listed in `apworld/tools/release/source_archives.json` (official URL, pinned SHA-256). Taken from
+  `--sources-dir` (default `build/release-sources/`); `--fetch-sources` downloads missing ones from the official URL.
+  A wrong hash or a missing archive stops the build (`--no-sources` only for development). `THIRD-PARTY-NOTICES.txt`
+  in the tools ZIP names both assets with their SHA-256 (a test checks this).
 - Output: `build/release/` (ignored by Git). Tests: `python -m pytest -q apworld/tools/release` (also in CI's tool job).
 
 Draft on GitHub (the tag is created when the draft is published):
@@ -368,7 +387,8 @@ Draft on GitHub (the tag is created when the draft is published):
 ```powershell
 gh release create v0.3.0 --repo junkx420/Prime3AP --draft --prerelease --title "Prime3AP 0.3.0 (beta)" `
   --notes-file ..\Prime3AP\release-notes\v0.3.0.md build\release\metroidprime3.apworld `
-  build\release\metroidprime3-tools-win.zip build\release\metroidprime3-example.yaml build\release\SHA256SUMS.txt
+  build\release\metroidprime3-tools-win.zip build\release\metroidprime3-example.yaml `
+  build\release\wiimms-iso-tools-r8638-src.tar.gz build\release\cygwin-3.1.7-1-src.tar.xz build\release\SHA256SUMS.txt
 ```
 
 The releases API sometimes answers HTTP 500 (seen on 2026-11-25, also for a one-line body); repeat the call. If
@@ -400,9 +420,11 @@ and notices from the NuGet runtime pack, OpenSSL 1.1.1, ncurses, zlib). Not ship
 (HDiffPatch, MIT), `MP3Update/` (MrMiguel211, MIT), the rest of `wit/bin`. Not included: the Visual C++ runtime
 (players install Microsoft's redistributable; Dolphin needs it too).
 
-Open point: GPL-2.0 (wit) and LGPL-3.0 (Cygwin) expect the corresponding source to be available. The notices link to
-the upstream sources; the most robust way is to attach the source archives (`wiimms-iso-tools` r8638,
-`cygwin-3.1.7-1-src`) to the release as well. Not done yet (decision of the maintainer).
+GPL-2.0 (wit) and LGPL-3.0 (Cygwin) require the corresponding source to be available. It is attached to the same
+release as the tools ZIP (`wiimms-iso-tools-r8638-src.tar.gz`, `cygwin-3.1.7-1-src.tar.xz`, see "Assets"), which
+counts as equivalent access from the same place (GPL-2.0 section 3, GPL-3.0 section 6d). The tools ZIP's
+`THIRD-PARTY-NOTICES.txt` points to these assets. When the tools ZIP moves to a new release (`TOOLS_RELEASE_TAG`), the
+source archives must be attached there too.
 
 ### Checked (T28)
 

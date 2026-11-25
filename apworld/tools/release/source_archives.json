@@ -1,0 +1,16 @@
+[
+  {
+    "asset": "wiimms-iso-tools-r8638-src.tar.gz",
+    "component": "wit/bin/wit.exe (Wiimms ISO Tools v3.05a r8638, GPL-2.0)",
+    "url": "https://github.com/Wiimm/wiimms-iso-tools/archive/fc1c0b840cb3ac41ca6e4f1d5e16da12b47eab58.tar.gz",
+    "origin": "Wiimm's official GitHub repository, commit fc1c0b8 \"WIT v3.05a\" (project/revision.sh: revision=8638)",
+    "sha256": "ebcff01c6d674f21a8c63ef0530d0516616d082e1d5041863ebc744549f937ea"
+  },
+  {
+    "asset": "cygwin-3.1.7-1-src.tar.xz",
+    "component": "wit/bin/cygwin1.dll (Cygwin 3.1.7, LGPL-3.0-or-later)",
+    "url": "https://sourceware.org/pub/cygwin-archive/20221123/x86/release/cygwin/cygwin-3.1.7-1-src.tar.xz",
+    "origin": "official Cygwin package archive on sourceware.org (the source package is the same for x86 and x86_64; SHA-512 8ed8f807...feef50 as in that folder's sha512.sum)",
+    "sha256": "214099e6bee974b02bada6f0e21c6cae2a85f187bb5673c1b5de6391844d8910"
+  }
+]

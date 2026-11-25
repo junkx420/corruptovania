@@ -46,5 +46,22 @@ Licence texts are in the folder "licenses". Each component keeps its own licence
 6. dummy_attract/attract01.thp, dummy_attract/Attract02.thp
    Empty files that replace the game's attract videos.
 
-The GPL and LGPL require that the corresponding source code stays available. The links above point to it; the
-release notes of https://github.com/junkx420/Prime3AP list the same sources.
+Corresponding source for the GPL/LGPL programs
+----------------------------------------------
+
+The complete corresponding source of wit.exe and cygwin1.dll is attached to the same GitHub release as this ZIP,
+https://github.com/junkx420/Prime3AP/releases/tag/v0.3.0 (also listed with their SHA-256 in that release's
+SHA256SUMS.txt):
+
+- wiimms-iso-tools-r8638-src.tar.gz (source of wit/bin/wit.exe, GPL-2.0)
+  SHA-256 ebcff01c6d674f21a8c63ef0530d0516616d082e1d5041863ebc744549f937ea
+  Unmodified archive of commit fc1c0b840cb3ac41ca6e4f1d5e16da12b47eab58 ("WIT v3.05a", revision 8638) from
+  https://github.com/Wiimm/wiimms-iso-tools
+- cygwin-3.1.7-1-src.tar.xz (source of wit/bin/cygwin1.dll, LGPL-3.0-or-later)
+  SHA-256 214099e6bee974b02bada6f0e21c6cae2a85f187bb5673c1b5de6391844d8910
+  Unmodified Cygwin source package from
+  https://sourceware.org/pub/cygwin-archive/20221123/x86/release/cygwin/cygwin-3.1.7-1-src.tar.xz
+  (the source package is the same for 32-bit and 64-bit Cygwin)
+
+The source of MP3Randomizer.exe is in https://github.com/junkx420/corruptovania (tools/prime3_patcher). The other
+components are under permissive licences; their sources are linked above.

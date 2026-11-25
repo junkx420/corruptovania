@@ -7,6 +7,9 @@ Writes into ``--out`` (default ``build/release``):
 - ``metroidprime3-tools-win.zip``: the patch tool's helper programs with licence texts (deterministic: sorted entries,
   fixed timestamps), its SHA-256 must equal ``patcher/tools.py TOOLS_ZIP_SHA256``,
 - ``metroidprime3-example.yaml``: the example YAML from the Prime3AP repo (``--example-yaml``), if found,
+- the source archives of the GPL/LGPL programs in the tools ZIP (``source_archives.json``: wit, Cygwin), taken from
+  ``--sources-dir`` (default ``build/release-sources``) or, with ``--fetch-sources``, downloaded from their official
+  URL; their SHA-256 is pinned in ``source_archives.json`` and checked,
 - ``SHA256SUMS.txt`` over all assets.
 
 All inputs are read from a Git commit (``--ref``, default ``HEAD``) of the Corruptovania repo, so uncommitted work of
@@ -19,7 +22,7 @@ before the version bump).
 
 Usage, from the Corruptovania root::
 
-    python apworld/tools/release/build_release.py --tag v0.3.0
+    python apworld/tools/release/build_release.py --tag v0.3.0 --fetch-sources
     python apworld/tools/release/build_release.py --tools-only     # prints the tools ZIP hash
 """
 
@@ -31,8 +34,10 @@ import hashlib
 import io
 import json
 import re
+import shutil
 import subprocess
 import sys
+import urllib.request
 import zipfile
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
@@ -42,6 +47,8 @@ WORLD_DIR = "apworld/metroidprime3"
 TOOLS_SRC = "randovania/data/gollop_mp3_patcher"
 RELEASE_DIR = "apworld/tools/release"
 TOOLS_PY = f"{WORLD_DIR}/patcher/tools.py"
+SOURCE_ARCHIVES_JSON = f"{RELEASE_DIR}/source_archives.json"
+DEFAULT_SOURCES_DIR = REPO_ROOT / "build" / "release-sources"
 
 APWORLD_NAME = "metroidprime3.apworld"
 WORLD_FOLDER_NAME = "metroidprime3"
@@ -213,6 +220,49 @@ def build_apworld(source: GitSource | WorktreeSource) -> tuple[bytes, dict]:
     return deterministic_zip(entries), manifest
 
 
+def source_archives(source: GitSource | WorktreeSource) -> list[dict]:
+    entries = json.loads(source.read(SOURCE_ARCHIVES_JSON))
+    for entry in entries:
+        if not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"]) or " " in entry["asset"]:
+            raise ReleaseError(f"bad entry in {SOURCE_ARCHIVES_JSON}: {entry}")
+    return entries
+
+
+def fetch(url: str, target: Path, opener: Callable = urllib.request.urlopen) -> None:
+    partial = target.with_name(target.name + ".part")
+    request = urllib.request.Request(url, headers={"User-Agent": "metroidprime3-release-build"})
+    with opener(request, timeout=120) as response, partial.open("wb") as file:
+        shutil.copyfileobj(response, file)
+    partial.replace(target)
+
+
+def provide_source_archives(
+    entries: list[dict], sources_dir: Path, out: Path, *, allow_fetch: bool, log: Callable[[str], None],
+    opener: Callable | None = None,
+) -> list[str]:
+    """Copy each archive (checked against its pinned SHA-256) from ``sources_dir`` into ``out``; download missing
+    ones from the official URL if ``allow_fetch``."""
+    sources_dir = Path(sources_dir)
+    names = []
+    for entry in entries:
+        cached = sources_dir / entry["asset"]
+        if not cached.is_file():
+            if not allow_fetch:
+                raise ReleaseError(f"source archive {cached} missing; use --fetch-sources to download it from "
+                                   f"{entry['url']}")
+            sources_dir.mkdir(parents=True, exist_ok=True)
+            log(f"Downloading {entry['url']}")
+            fetch(entry["url"], cached, opener or urllib.request.urlopen)
+        found = sha256_file(cached)
+        if found != entry["sha256"]:
+            raise ReleaseError(f"{cached} has SHA-256 {found}, expected {entry['sha256']} ({SOURCE_ARCHIVES_JSON}); "
+                               "delete it and fetch again")
+        shutil.copyfile(cached, out / entry["asset"])
+        log(f"{entry['asset']}: {cached.stat().st_size:,} bytes, source of {entry['component']}")
+        names.append(entry["asset"])
+    return names
+
+
 def write_sums(out: Path, names: list[str]) -> Path:
     sums = out / "SHA256SUMS.txt"
     sums.write_text("".join(f"{sha256_file(out / name)}  {name}\n" for name in sorted(names)), encoding="utf-8",
@@ -228,6 +278,9 @@ def build_release(
     example_yaml: Path | None = DEFAULT_EXAMPLE_YAML,
     allow_version_mismatch: bool = False,
     tools_only: bool = False,
+    include_sources: bool = True,
+    sources_dir: Path = DEFAULT_SOURCES_DIR,
+    fetch_sources: bool = False,
     log: Callable[[str], None] = print,
 ) -> dict[str, str]:
     """Build the assets, run the checks, return {asset name: sha256}."""
@@ -270,6 +323,10 @@ def build_release(
         names.append(target.name)
     elif example_yaml:
         log(f"WARNING: example YAML {example_yaml} not found, not included")
+    if include_sources:
+        names += provide_source_archives(source_archives(source), sources_dir, out, allow_fetch=fetch_sources, log=log)
+    else:
+        log("WARNING: source archives not included (GPL/LGPL programs in the tools ZIP need them in a release)")
     sums = write_sums(out, names)
     log(f"{sums.name}:\n{sums.read_text(encoding='utf-8')}")
     log(f"Built from {source.commit}")
@@ -286,14 +343,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--allow-version-mismatch", action="store_true",
                         help="only warn if world_version != --tag (draft before the version bump)")
     parser.add_argument("--tools-only", action="store_true", help="only build the tools ZIP and print its hash")
+    parser.add_argument("--sources-dir", type=Path, default=DEFAULT_SOURCES_DIR,
+                        help="where the source archives of source_archives.json are cached")
+    parser.add_argument("--fetch-sources", action="store_true",
+                        help="download missing source archives from their official URL (hash still checked)")
+    parser.add_argument("--no-sources", action="store_true", help="do not attach the source archives (dev only)")
     args = parser.parse_args(argv)
     if not args.tag and not args.tools_only:
         parser.error("--tag is required (or --tools-only)")
     try:
         source = WorktreeSource() if args.worktree else GitSource(args.ref)
         build_release(args.tag, args.out, source, example_yaml=args.example_yaml,
-                      allow_version_mismatch=args.allow_version_mismatch, tools_only=args.tools_only)
-    except (ReleaseError, OSError, KeyError) as error:
+                      allow_version_mismatch=args.allow_version_mismatch, tools_only=args.tools_only,
+                      include_sources=not args.no_sources, sources_dir=args.sources_dir,
+                      fetch_sources=args.fetch_sources)
+    except (ReleaseError, OSError, KeyError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     return 0
