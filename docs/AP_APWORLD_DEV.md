@@ -397,6 +397,36 @@ and `gh release upload`.
 Assets of a **draft** are not public: the download URL in `tools.py` only works after publishing. Before that, test with
 `$MP3AP_TOOLS_URL` (local server) or by putting the ZIP into the cache folder.
 
+### Release procedure (as done for v0.3.0, T32)
+
+1. `git pull --rebase --autostash origin archipelago`; check that no work meant for a later release is committed.
+   Set `world_version` in `apworld/metroidprime3/archipelago.json` to the tag without `v`, commit only that file, push,
+   wait for green CI.
+2. Build from exactly that commit: `python apworld/tools/release/build_release.py --tag vX.Y.Z --fetch-sources`
+   (prints `Built from <sha>`). Replace the changed assets in the draft with
+   `gh release upload vX.Y.Z --repo junkx420/Prime3AP --clobber <files>`, update the notes with
+   `gh release edit vX.Y.Z --notes-file ..\Prime3AP\release-notes\vX.Y.Z.md`, then compare the asset digests
+   (`gh release view vX.Y.Z --json assets`) with `SHA256SUMS.txt`.
+3. Smoke test in the installed Archipelago: back up the old `.apworld` from `custom_worlds`, copy the new one in,
+   generate MP3 + ChecksFinder from the release's example YAML (`ArchipelagoGenerate.exe --player_files_path <folder>
+   --outputpath <folder>`, outside the repo), host with `ArchipelagoServer.exe`, Open Patch, PrimeHack (Clock Override
+   off), connect. Check: seed check OK, location 11 (Docking Bay 5) reaches the server, `/send <slot> Grapple Lasso`
+   in the server console arrives in the game.
+4. Publish only after the user's OK: `gh release edit vX.Y.Z --repo junkx420/Prime3AP --draft=false --prerelease
+   --target <Prime3AP main sha>` (creates the tag).
+5. Public download check: copy of the installed Archipelago (without `custom_worlds`, `host.yaml`, `Players`, `logs`,
+   cache) in `%TEMP%`, only the `.apworld` downloaded from the public release URL (checked against the public
+   `SHA256SUMS.txt`), minimal `host.yaml` with `iso_file` and `tools_folder: ""`, `MP3AP_TOOLS_DIR`/`MP3AP_TOOLS_URL`
+   unset, then `ArchipelagoLauncher.exe <x.apmp3> -- --nogui`.
+
+**Checked (T32, v0.3.0):** world_version 0.3.0 in `3f65f8d`, assets built from it (only `.apworld` and
+`SHA256SUMS.txt` changed; tools ZIP, example YAML and source archives byte-identical to the T28 draft), GitHub digests =
+`SHA256SUMS.txt`. Smoke test in the installed Archipelago 0.6.8 with PrimeHack: ISO built in 37 s, seed check OK,
+location 11 at the server, Grapple Lasso from the server console written to the game. Published as pre-release
+(tag `v0.3.0` on Prime3AP `8450cdc`). Fresh copy: tools ZIP downloaded from the public URL into
+`metroidprime3_tools/tools-cdd5a5b72789` (hash checked), ISO built in 38 s, SHA-256 identical to the smoke test ISO
+of the same seed (`415175c9…`).
+
 ### Licences of the shipped programs
 
 All licences allow redistribution. The ZIP carries every licence text and `THIRD-PARTY-NOTICES.txt` (versions, sources).
