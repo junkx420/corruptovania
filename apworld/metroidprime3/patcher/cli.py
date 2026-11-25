@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import build, patch_data, seed_id
+from . import build, patch_data, seed_id, tools
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -19,14 +19,23 @@ def _parser() -> argparse.ArgumentParser:
                         help="AP patch data: .apmp3 from Archipelago or JSON (docs/AP_PATCH_TOOL.md)")
     parser.add_argument("--iso", type=Path, help="original, unmodified ISO (RM3P01)")
     parser.add_argument("--out", type=Path, help="patched ISO to write (overwritten if it exists)")
-    parser.add_argument("--tools", type=Path, default=None, help=f"helper folder (default: ${build.TOOLS_ENV} or the "
-                        "repo's randovania/data/gollop_mp3_patcher)")
+    parser.add_argument("--tools", type=Path, default=None, help=f"helper folder (default: ${build.TOOLS_ENV}, the "
+                        "cache folder, a Corruptovania checkout, else download the tools ZIP on first use)")
+    parser.add_argument("--tools-cache", type=Path, default=None,
+                        help="cache folder for the downloaded tools (default: <Archipelago>/metroidprime3_tools)")
     parser.add_argument("--temp-dir", type=Path, default=None, help="where to extract (needs ~2x ISO size free)")
     parser.add_argument("--no-verify", action="store_true", help="skip reading back game ID and seed ID")
     parser.add_argument("--dry-run", action="store_true", help="only validate --patch and print the MP3Randomizer data")
     parser.add_argument("--read-seed-id", type=Path, metavar="ISO_OR_DOL",
                         help="print the seed ID of a patched ISO or main.dol and exit")
     return parser
+
+
+def _tools(args: argparse.Namespace) -> Path | None:
+    """``--tools`` as given; with ``--tools-cache`` the lookup (and a download) happens here, else in ``build``."""
+    if args.tools or not args.tools_cache:
+        return args.tools
+    return tools.find_tools(cache_dir=args.tools_cache)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -39,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
             if path.suffix.lower() == ".dol":
                 version, found = seed_id.read_seed_id_from_dol_file(path)
             else:
-                version, found = build.read_seed_id_from_iso(path, args.tools)
+                version, found = build.read_seed_id_from_iso(path, _tools(args), allow_download=True)
             print(f"{version.description} ({version.game_id}): " + (found.hex() if found else "no seed ID (unpatched)"))
             return 0
 
@@ -54,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--iso and --out are required")
 
         result = build.patch_iso(
-            data, args.iso, args.out, tools_dir=args.tools, temp_dir=args.temp_dir, verify=not args.no_verify
+            data, args.iso, args.out, tools_dir=_tools(args), temp_dir=args.temp_dir, verify=not args.no_verify
         )
     except (patch_data.PatchDataError, build.PatchToolError, ValueError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)

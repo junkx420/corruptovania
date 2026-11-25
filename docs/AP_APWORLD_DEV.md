@@ -317,3 +317,85 @@ python -m pytest -q -rs apworld/tools
 
 Leave `MP3_PAL_EXTRACTED`, `MP3_PAL_DOL` and `MP3_MEM1_SNAPSHOT` unset
 to reproduce CI's skips. Pytest reports the fixture-dependent skips with `-rs`.
+
+## Release
+
+Release repo: [junkx420/Prime3AP](https://github.com/junkx420/Prime3AP) (E20). Player guide there:
+`README.md`, `docs/INSTALL.md`, example YAML `examples/Metroid Prime 3 Corruption.yaml`. The packed `.apworld` still
+contains no helper programs; the patch tool downloads them on first use (T28, `AP_PATCH_TOOL.md` section 3.1). This
+supersedes the "helper programs not in the `.apworld`" notes in sections 6 to 8.
+
+### Assets
+
+| Asset | Content |
+|---|---|
+| `metroidprime3.apworld` | `apworld/metroidprime3` packed like "Build APWorlds" (same ignore rules as `data/GLOBAL.apignore` of AP 0.6.8, manifest = `archipelago.json` + `compatible_version` 7 + `version` 7) |
+| `metroidprime3-tools-win.zip` | the helper programs the patch tool runs (PAL, no MP3Update/Deflicker), `README.txt`, `THIRD-PARTY-NOTICES.txt`, `licenses/` |
+| `Metroid Prime 3 Corruption.yaml` | example YAML from the Prime3AP repo |
+| `SHA256SUMS.txt` | `sha256sum` format over the three files |
+
+### Build
+
+From the Corruptovania root (plain Python ≥ 3.10, no Archipelago needed):
+
+```powershell
+python apworld/tools/release/build_release.py --tag v0.3.0
+```
+
+- Reads every input as a raw Git blob of `--ref` (default `HEAD`), so uncommitted work of other workers in the shared
+  working tree never gets into a release and `core.autocrlf` does not change the bytes. `--worktree` reads from disk
+  (development only).
+- Fails if `world_version` in `archipelago.json` is not the tag without `v`. `--allow-version-mismatch` only warns
+  (draft assets built before the version bump; rebuild before publishing).
+- Fails if the tools ZIP hash differs from `TOOLS_ZIP_SHA256` in `patcher/tools.py`. The ZIP is deterministic (sorted
+  entries, fixed timestamp 2026-01-01, deflate level 9), so it only changes when an input changes (or with another zlib
+  version). After changing a helper program or a licence file: commit, run `--tools-only` (prints the hash), set
+  `TOOLS_ZIP_SHA256` (and `TOOLS_RELEASE_TAG` if the ZIP goes to a new release), commit, build again.
+- Example YAML: `--example-yaml` (default `../Prime3AP/examples/Metroid Prime 3 Corruption.yaml`).
+- Output: `build/release/` (ignored by Git). Tests: `python -m pytest -q apworld/tools/release` (also in CI's tool job).
+
+Draft on GitHub (the tag is created when the draft is published):
+
+```powershell
+gh release create v0.3.0 --repo junkx420/Prime3AP --draft --prerelease --title "Prime3AP 0.3.0 (beta)" `
+  --notes-file ..\Prime3AP\release-notes\v0.3.0.md build\release\metroidprime3.apworld `
+  build\release\metroidprime3-tools-win.zip "build\release\Metroid Prime 3 Corruption.yaml" build\release\SHA256SUMS.txt
+```
+
+Assets of a **draft** are not public: the download URL in `tools.py` only works after publishing. Before that, test with
+`$MP3AP_TOOLS_URL` (local server) or by putting the ZIP into the cache folder.
+
+### Licences of the shipped programs
+
+All licences allow redistribution. The ZIP carries every licence text and `THIRD-PARTY-NOTICES.txt` (versions, sources).
+
+| File in the ZIP | Component, version | Licence | Obligations when redistributing |
+|---|---|---|---|
+| `MP3Randomizer.exe` | gollop's MP3Randomizer, modified in this fork (T16, `tools/prime3_patcher`) | MIT (gollop) + GPL-3.0 (fork) | keep the MIT notice; GPL: source is public in this repo |
+| (inside `MP3Randomizer.exe`) | .NET 8 runtime 8.0.34 (`Microsoft.NETCore.App.Runtime.win-x86`, self-contained single file) | MIT, third-party notices | keep `LICENSE.TXT` and `THIRD-PARTY-NOTICES.TXT` of the runtime pack (not the SDK installer's licence) |
+| `lzokay/lzokay.dll` | lzokay (Jack Andersen) | MIT | keep the notice |
+| `nodtool/nodtool.exe` | nod (AxioDL) | MIT | keep the notice |
+| `wit/bin/wit.exe` | Wiimms ISO Tools v3.05a r8638 cygwin64 | GPL-2.0 | licence text, corresponding source available (wit.wiimm.de, GitHub `Wiimm/wiimms-iso-tools`, SVN r8638) |
+| `wit/bin/cygwin1.dll` | Cygwin 3.1.7 | LGPL-3.0+ with linking exception | LGPL + GPL text, source available (cygwin.com, tag `cygwin-3_1_7-release`) |
+| `wit/bin/cygcrypto-1.1.dll` | OpenSSL 1.1.1f | OpenSSL + SSLeay | licence text and the three acknowledgements (in `THIRD-PARTY-NOTICES.txt`) |
+| `wit/bin/cygncursesw-10.dll` | ncurses 6.1.20190727 | X11 style | keep the notice |
+| `wit/bin/cygz.dll` | zlib 1.2.11 | zlib | none for binaries (notice included anyway) |
+
+Licence texts in the repo: the four of `randovania/data/gollop_mp3_patcher` (`LICENSE`, `lzokay/LICENSE`,
+`nodtool/LICENSE`, `wit/gpl-2.0.txt`) plus `apworld/tools/release/licenses/` (GPL-3.0, LGPL-3.0, .NET runtime licence
+and notices from the NuGet runtime pack, OpenSSL 1.1.1, ncurses, zlib). Not shipped (not needed): `hpatchz.exe`
+(HDiffPatch, MIT), `MP3Update/` (MrMiguel211, MIT), the rest of `wit/bin`. Not included: the Visual C++ runtime
+(players install Microsoft's redistributable; Dolphin needs it too).
+
+Open point: GPL-2.0 (wit) and LGPL-3.0 (Cygwin) expect the corresponding source to be available. The notices link to
+the upstream sources; the most robust way is to attach the source archives (`wiimms-iso-tools` r8638,
+`cygwin-3.1.7-1-src`) to the release as well. Not done yet (decision of the maintainer).
+
+### Checked (T28)
+
+Simulated fresh PC: only `apworld/metroidprime3/patcher` copied into an empty folder outside the repo (no
+Corruptovania checkout reachable), `MP3AP_TOOLS_DIR` unset, `PATH` = `C:\Windows\System32;C:\Windows`, empty cache,
+tools ZIP served by `python -m http.server` and `MP3AP_TOOLS_URL`: one download, hash checked, extracted, ISO built
+from `AP_38224278823687041413_P2_Samus.apmp3` in 40 s, seed ID `7f5dd955…` read back; the ISO is SHA-256-identical
+to the T05b/T23 builds (`e3cf4d7e…`). Second call: no download. Offline (refused port) and the not-yet-public GitHub
+URL (404): error with the manual steps. ZIP placed into the cache by hand: extracted without network.

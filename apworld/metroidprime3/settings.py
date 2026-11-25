@@ -27,8 +27,9 @@ class MP3Settings(settings.Group):
                                  f"expected RM3P01)")
 
     class ToolsFolder(settings.OptionalUserFolderPath):
-        """Folder with MP3Randomizer.exe, nodtool, wit and dummy_attract (patch tool helpers). Empty or without
-        MP3Randomizer.exe: $MP3AP_TOOLS_DIR, else randovania/data/gollop_mp3_patcher of a corruptovania checkout."""
+        """Folder with MP3Randomizer.exe, nodtool, wit and dummy_attract (patch tool helpers). Leave empty: the patch
+        tools are downloaded on the first patch into metroidprime3_tools in the Archipelago folder. Set it only for an
+        offline install (extracted metroidprime3-tools-win.zip)."""
 
     class OutputFolder(settings.OptionalUserFolderPath):
         """Where the patched ISO is written. Empty: next to the .apmp3 file."""

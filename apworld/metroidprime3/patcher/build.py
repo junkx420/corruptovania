@@ -3,8 +3,9 @@
 Same steps as Randovania's prime3 exporter (``randovania/games/prime3/exporter/game_exporter.py``): extract with
 nodtool, replace the attract videos, stage the paks, run MP3Randomizer, rebuild with wit. Differences: MP3Randomizer
 always runs with ``--ap-mode`` (T16), MP3Update/Deflicker are never applied (PAL, SPEC E7), and the seed ID is written
-into ``main.dol`` (T18 part 1). No Randovania import; the helper programs come from a tools folder (default: the
-checked-in ``randovania/data/gollop_mp3_patcher`` of this repo). Windows only for now.
+into ``main.dol`` (T18 part 1). No Randovania import; the helper programs come from a tools folder
+(:func:`.tools.find_tools`: configured folder, ``$MP3AP_TOOLS_DIR``, cache, repo checkout, else downloaded on first
+use). Windows only for now.
 """
 
 from __future__ import annotations
@@ -19,7 +20,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 from . import seed_id as seed_id_lib
+from . import tools as tools_lib
 from .patch_data import PatchData
+from .tools import TOOLS_ENV, PatchToolError
 
 ProgressCallback = Callable[[str], None]
 
@@ -45,19 +48,23 @@ RANDOMIZE_ELEMENTS = (
 )
 DUMMY_ATTRACTS = ("attract01.thp", "Attract02.thp")
 
-TOOLS_ENV = "MP3AP_TOOLS_DIR"
+__all__ = ["TOOLS_ENV", "PatchToolError"]  # re-exported, they used to live here
 
-
-class PatchToolError(RuntimeError):
-    pass
+# Windows status codes of a helper that could not start (nodtool needs the Microsoft Visual C++ 2015-2022 runtime).
+_MISSING_DLL_CODES = (0xC0000135, 0xC0000135 - (1 << 32), 0xC000007B, 0xC000007B - (1 << 32))
+VC_REDIST_HINT = (
+    "The program could not start because a DLL is missing. Install the Microsoft Visual C++ 2015-2022 "
+    "Redistributable (x64 and x86): https://aka.ms/vs/17/release/vc_redist.x64.exe and "
+    "https://aka.ms/vs/17/release/vc_redist.x86.exe"
+)
 
 
 def default_tools_dir() -> Path:
-    """``$MP3AP_TOOLS_DIR``, else ``randovania/data/gollop_mp3_patcher`` of the repo this file lives in."""
-    if env := os.environ.get(TOOLS_ENV):
-        return Path(env)
-    # patcher -> metroidprime3 -> apworld -> repo root. resolve() follows the junction from Archipelago/worlds.
-    return Path(__file__).resolve().parents[3] / "randovania" / "data" / "gollop_mp3_patcher"
+    """Helper folder without downloading: ``$MP3AP_TOOLS_DIR``, cache, else the repo checkout."""
+    try:
+        return tools_lib.find_tools(allow_download=False)
+    except PatchToolError:
+        return tools_lib.checkout_tools_dir()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -96,6 +103,8 @@ def run_tool(command: list[str]) -> str:
         result = subprocess.run(command, check=True, capture_output=True, text=True, errors="replace")
     except subprocess.CalledProcessError as error:
         output = "\n".join(part.strip() for part in (error.stdout, error.stderr) if part and part.strip())
+        if error.returncode in _MISSING_DLL_CODES:
+            output = f"{output}\n{VC_REDIST_HINT}".strip()
         raise PatchToolError(
             f"{Path(command[0]).name} failed (exit code {error.returncode}): {command}\n{output[-12000:]}"
         ) from error
@@ -148,9 +157,16 @@ def wit_copy_command(toolchain: Toolchain, data_dir: Path, out: Path) -> list[st
     return [str(toolchain.wit), "COPY", "-I", "-z", "--trunc", "--auto-split", "--overwrite", str(data_dir), str(out)]
 
 
-def read_seed_id_from_iso(iso: Path, tools_dir: Path | None = None) -> tuple[seed_id_lib.DolVersion, bytes | None]:
-    """Extract only ``sys/main.dol`` from a disc image with wit and read its seed ID."""
-    toolchain = Toolchain.from_dir(tools_dir or default_tools_dir())
+def read_seed_id_from_iso(
+    iso: Path, tools_dir: Path | None = None, *, allow_download: bool = False, progress: ProgressCallback = print
+) -> tuple[seed_id_lib.DolVersion, bytes | None]:
+    """Extract only ``sys/main.dol`` from a disc image with wit and read its seed ID.
+
+    Without ``tools_dir`` the tools are looked up (:func:`.tools.find_tools`); downloaded only if ``allow_download``.
+    """
+    if not tools_dir:
+        tools_dir = tools_lib.find_tools(allow_download=allow_download, progress=progress)
+    toolchain = Toolchain.from_dir(tools_dir)
     with tempfile.TemporaryDirectory(prefix="mp3ap_dol_") as temp:
         target = Path(temp) / "x"
         run_tool([
@@ -188,8 +204,10 @@ def patch_iso(
         raise PatchToolError("output must not overwrite the input ISO")
     if not out.parent.is_dir():
         raise PatchToolError(f"output folder does not exist: {out.parent}")
-    toolchain = Toolchain.from_dir(tools_dir or default_tools_dir())
     game_id = check_input_game_id(iso, progress)
+    # Before extracting: may download the tools ZIP on first use (progress goes to the T23 window).
+    tools_dir = tools_dir or tools_lib.find_tools(progress=progress)
+    toolchain = Toolchain.from_dir(tools_dir)
 
     # Fresh folders per run (like the exporter); a failed run leaves nothing behind.
     work = Path(tempfile.mkdtemp(prefix="mp3ap_", dir=temp_dir))

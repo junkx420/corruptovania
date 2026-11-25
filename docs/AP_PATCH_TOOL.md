@@ -1,6 +1,7 @@
 # AP patch tool: AP patch data + original ISO → patched ISO (T05a, `.apmp3` T05b)
 
-As of 2026-11-25. Code: `apworld/metroidprime3/patcher/`, tests: `apworld/metroidprime3/test/test_patcher.py`.
+As of 2026-11-25. Code: `apworld/metroidprime3/patcher/`, tests: `apworld/metroidprime3/test/test_patcher.py`,
+`test_tools_download.py` (T28).
 Basis: `AP_PATCHER_CHANGES.md` (T16, `--ap-mode`, APItem), `AP_PATCHER_NOTES.md` (T09), `AP_DEV_SETUP.md` (T01).
 
 > **Summary**
@@ -39,7 +40,8 @@ which needs Archipelago. The folder call only loads the package `patcher`.)
 | `--patch` | `.apmp3` (section 2.3) or AP patch data as JSON (section 2) |
 | `--iso` | original ISO, unmodified (`RM3P01`; `RM3E01`/`RM3J01` work with a warning, untested) |
 | `--out` | target ISO (is overwritten). Must not be the input ISO |
-| `--tools` | folder with the helper programs (default: `$MP3AP_TOOLS_DIR`, otherwise `randovania/data/gollop_mp3_patcher` of this repo) |
+| `--tools` | folder with the helper programs (default: lookup order of section 3.1, downloads the tools ZIP on first use) |
+| `--tools-cache` | cache folder for the downloaded tools (default: `<Archipelago>/metroidprime3_tools`, outside Archipelago `%LOCALAPPDATA%\metroidprime3_tools`) |
 | `--temp-dir` | place for the extraction (default: `%TEMP%`; needs about 2 × ISO size free) |
 | `--no-verify` | do not read back game ID and seed ID in the target ISO |
 | `--dry-run` | only check `--patch` and print the data for MP3Randomizer |
@@ -208,12 +210,49 @@ MP3Randomizer, wit). `APPatch` is an `APPlayerContainer` with `procedure: "custo
 ## 3. Requirements
 
 - **Windows** (the helper programs are `.exe`). Python ≥ 3.10, standard library only.
-- Helper programs in the tools folder (all checked into the repo under `randovania/data/gollop_mp3_patcher/`):
-  `MP3Randomizer.exe` (T16 build, see 4), `lzokay/lzokay.dll` (32-bit), `nodtool/nodtool.exe`, `wit/bin/wit.exe`,
-  `dummy_attract/attract01.thp`, `dummy_attract/Attract02.thp`. If a file is missing, the tool aborts before extracting.
-  Randovania itself (Python package, venv) is not needed.
+- Helper programs (only what the PAL build without MP3Update/Deflicker runs, T28): `MP3Randomizer.exe` (T16 build,
+  see 4), `lzokay/lzokay.dll` (32-bit), `nodtool/nodtool.exe`, `wit/bin/wit.exe` with the four Cygwin DLLs it imports
+  (`cygwin1.dll`, `cygcrypto-1.1.dll`, `cygncursesw-10.dll`, `cygz.dll`, from its PE import table),
+  `dummy_attract/attract01.thp`, `dummy_attract/Attract02.thp`. Not needed: `hpatchz.exe`, `MP3Update/`, the `.bat`
+  files and the rest of `wit/bin`. If a file is missing, the tool aborts before extracting.
+- `nodtool.exe` needs the Microsoft Visual C++ 2015-2022 Redistributable (`MSVCP140.dll`, `VCRUNTIME140.dll`). If it is
+  missing, the error names the redistributable. `MP3Randomizer.exe` is self-contained (.NET runtime inside), `wit.exe`
+  only needs its Cygwin DLLs.
 - Original ISO PAL `RM3P01` (Rev 0, MD5 `f4c734a1e191c45e9ac037d92e14485d`). Trilogy is rejected.
 - Free space: about 2 × ISO size in `--temp-dir` plus the target ISO (≈ 4.5 GB). Duration about 1 minute.
+
+### 3.1 Where the helper programs come from (T28)
+
+`patcher/tools.py` (`find_tools`), first match wins:
+
+1. `--tools` / `metroidprime3_options.tools_folder` in `host.yaml` (the launcher ignores the setting if the folder has
+   no `MP3Randomizer.exe`),
+2. `$MP3AP_TOOLS_DIR`,
+3. the cache: `<cache>/tools-<first 12 hex digits of the ZIP hash>/` with the marker file `metroidprime3_tools.sha256`
+   (written only after a verified extraction; a cache of another tools version is ignored),
+4. `randovania/data/gollop_mp3_patcher` of a Corruptovania checkout (developers; not present in a packed `.apworld`),
+5. `metroidprime3-tools-win.zip` placed into `<cache>/` by hand (offline install; the file is kept),
+6. download of the tools ZIP from the fixed URL
+   `https://github.com/junkx420/Prime3AP/releases/download/v0.3.0/metroidprime3-tools-win.zip` (`TOOLS_RELEASE_TAG`,
+   `TOOLS_ZIP_NAME`). `$MP3AP_TOOLS_URL` replaces the URL (mirror or local test server); the hash is enforced anyway.
+
+`<cache>` = `<Archipelago>/metroidprime3_tools` (`Utils.user_path`, only if Archipelago already imported `Utils`, so the
+patcher stays standard library only), outside Archipelago `%LOCALAPPDATA%\metroidprime3_tools`, or `--tools-cache`.
+
+Download: `urllib`, 1 MB chunks into `<zip>.part`, SHA-256 while streaming against `TOOLS_ZIP_SHA256` (fixed in the
+code), progress at most every 0.25 s through the progress callback (the T23 patch window shows "Downloading patch tools
+(first use only): 12.0 of 31.4 MB..."). Then "Checking patch tools..." / "Extracting patch tools..." into a staging
+folder in the cache (paths with `..`, drive letters or absolute paths are rejected), required files checked, marker
+written, staging folder renamed. The downloaded ZIP is deleted afterwards; the extracted folder is the cache.
+
+Errors (`PatchToolError`, shown in the launcher's error dialog): offline/HTTP error ("Could not download the patch
+tools from <url>: <reason>"), wrong hash ("... have SHA-256 x, expected y. The file was deleted."), damaged manual ZIP
+("Delete it and download it again"). Each message ends with the manual steps: download the ZIP from the release page and
+put it unextracted into `<cache>`, or extract it anywhere and set `tools_folder`.
+
+`patch_iso` resolves the tools after the game ID check and before extracting, so the download is part of the patch
+window. `read_seed_id_from_iso` never downloads unless `allow_download=True` (the CLI's `--read-seed-id` passes it; the
+launcher's "is the existing ISO up to date" check does not).
 
 ## 4. Checked-in MP3Randomizer EXE (T16 build)
 
@@ -264,9 +303,8 @@ See `STATUS.md` T05a. Details:
 
 1. **Windows only.** macOS/Linux would need the exporter's helper programs for these platforms (Randovania's
    macOS toolchain is not in the repo) and a Linux build of MP3Randomizer.
-2. **The helper programs come from the repo** (`randovania/data/gollop_mp3_patcher`). The packed `.apworld` does not contain
-   them. For the release (F10) they must be shipped or downloaded; until then `--tools`,
-   `MP3AP_TOOLS_DIR` or, in the launcher, `metroidprime3_options.tools_folder` in the `host.yaml`.
+2. ~~The helper programs come from the repo~~: done in T28. The `.apworld` still does not contain them, but the
+   patch tool downloads the tools ZIP of the release on first use (section 3.1).
 3. ~~No launcher entry / no `.apmp3`~~: done in T05b (section 2.3, `AP_APWORLD_DEV.md` section 6).
 4. **Texts**: foreign pickups all show "Archipelago-Item" (E14); player/item name per location is missing (after the MVP).
    English only (like all patcher texts).

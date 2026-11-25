@@ -1,0 +1,50 @@
+Metroid Prime 3: Corruption for Archipelago - patch tools (Windows)
+==================================================================
+
+This ZIP holds the helper programs the Metroid Prime 3 patch tool runs to turn an .apmp3 patch file and your own
+game disc image into a patched ISO. It contains no game files. The programs are unmodified copies from
+randovania/data/gollop_mp3_patcher of https://github.com/junkx420/corruptovania (branch "archipelago"), except
+MP3Randomizer.exe, which is built from source in that repository (see below).
+
+Licence texts are in the folder "licenses". Each component keeps its own licence:
+
+1. MP3Randomizer.exe
+   Metroid Prime 3 randomizer by gollop, MIT licence (licenses/MP3Randomizer-LICENSE.txt), modified for
+   Archipelago ("--ap-mode", Archipelago item) in the Corruptovania fork, which is GPL-3.0 (licenses/GPL-3.0.txt).
+   Source: https://github.com/junkx420/corruptovania/tree/archipelago/tools/prime3_patcher
+   Built as a self-contained single-file win-x86 program. It bundles the .NET 8 runtime (8.0.34), MIT licence
+   (licenses/dotnet-runtime-LICENSE.txt, notices in licenses/dotnet-runtime-THIRD-PARTY-NOTICES.txt).
+   Source: https://github.com/dotnet/runtime
+
+2. lzokay/lzokay.dll
+   LZO compression library by Jack Andersen, MIT licence (licenses/lzokay-LICENSE.txt).
+   Source: https://github.com/AxioDL/lzokay
+
+3. nodtool/nodtool.exe
+   GameCube/Wii disc tool of the NOD project (Jack Andersen, Phillip Stephens and contributors), MIT licence
+   (licenses/nodtool-LICENSE.txt). Source: https://github.com/AxioDL/nod
+   Needs the Microsoft Visual C++ 2015-2022 Redistributable, which is not included.
+
+4. wit/bin/wit.exe
+   Wiimms ISO Tools v3.05a r8638 (cygwin64, 2022-08-27) by Dirk Clemens, GPL-2.0 (licenses/wit-GPL-2.0.txt).
+   Source: https://wit.wiimm.de/ and https://github.com/Wiimm/wiimms-iso-tools (SVN:
+   http://opensvn.wiimm.de/wii/trunk/wiimms-iso-tools/, revision 8638).
+
+5. Cygwin runtime libraries that wit.exe loads (from the official wit Windows build):
+   - wit/bin/cygwin1.dll: Cygwin 3.1.7, LGPL-3.0-or-later with the Cygwin linking exception
+     (licenses/LGPL-3.0.txt, licenses/GPL-3.0.txt). Source: https://cygwin.com/ (package cygwin-3.1.7-1-src,
+     git https://cygwin.com/git/newlib-cygwin.git, tag cygwin-3_1_7-release).
+   - wit/bin/cygcrypto-1.1.dll: OpenSSL 1.1.1f, OpenSSL and SSLeay licences (licenses/openssl-1.1.1-LICENSE.txt).
+     This product includes software developed by the OpenSSL Project for use in the OpenSSL Toolkit
+     (http://www.openssl.org/). This product includes cryptographic software written by Eric Young
+     (eay@cryptsoft.com). This product includes software written by Tim Hudson (tjh@cryptsoft.com).
+     Source: https://www.openssl.org/source/old/1.1.1/openssl-1.1.1f.tar.gz
+   - wit/bin/cygncursesw-10.dll: ncurses 6.1.20190727, X11-style licence (licenses/ncurses-LICENSE.txt).
+     Source: https://invisible-island.net/ncurses/
+   - wit/bin/cygz.dll: zlib 1.2.11, zlib licence (licenses/zlib-LICENSE.txt). Source: https://zlib.net/fossils/
+
+6. dummy_attract/attract01.thp, dummy_attract/Attract02.thp
+   Empty files that replace the game's attract videos.
+
+The GPL and LGPL require that the corresponding source code stays available. The links above point to it; the
+release notes of https://github.com/junkx420/Prime3AP list the same sources.

@@ -50,9 +50,13 @@ def output_path(patch_file: Path, output_folder: str) -> Path:
 
 
 def tools_dir(configured: str) -> Path | None:
-    """Configured helper folder if it contains MP3Randomizer.exe, else ``None`` (patcher default)."""
+    """Configured helper folder if it contains MP3Randomizer.exe, else ``None``: the patcher then looks for the tools
+    itself (``$MP3AP_TOOLS_DIR``, ``<Archipelago>/metroidprime3_tools``, repo checkout) and downloads them on first use
+    (``patcher.tools.find_tools``; download progress goes to the patch window)."""
     if configured and (Path(configured) / "MP3Randomizer.exe").is_file():
         return Path(configured)
+    if configured:
+        logger.warning("tools_folder %s has no MP3Randomizer.exe, ignoring it", configured)
     return None
 
 
@@ -135,7 +139,8 @@ def make_iso(patch_file: Path, *, gui: bool = True) -> tuple[Path, dict]:
         ap_settings.no_gui = no_gui
     if ap_settings.get_settings().changed:
         ap_settings.get_settings().save()  # a launcher subprocess ends without atexit, so save now
-    tools = tools_dir(str(options.tools_folder))
+    # Group resolves "" to the Archipelago folder, so only use the resolved path if host.yaml names one.
+    tools = tools_dir(str(options.tools_folder) if raw_value(options, "tools_folder") else "")
     out = output_path(patch_file, raw_value(options, "output_folder"))
 
     if is_up_to_date(out, data, tools):
