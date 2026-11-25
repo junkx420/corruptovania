@@ -66,7 +66,7 @@ Building blocks:
 | F7 | AP client: give received items into the game, resumption after restart | F6 |
 | F8 | End-to-end test: 2-player multiworld (MP3 + any game) played through to the goal | F5, F7 |
 | F9 | Extending options: starting location, starting items, trick level, Energy Cell goal (not in the MVP, see E3) | F8 |
-| F10 | DeathLink, hints in the game, release package + release repo of its own (E20) | F8 |
+| F10 | DeathLink, in-game messages via DOL hook (received items, warnings), own simple AP model + per-location texts (user wish, like 2s2h), release package + release repo of its own (E20) | F8 |
 
 ## 5. Open decisions
 
@@ -93,3 +93,4 @@ Building blocks:
 | E19 | Check of the flag table | 89 locations certain, 10 SpecialFunction locations "probable" (T12). Instead of visiting all 10 live: the client has a learning/log mode (when ItemPercentage rises, it logs newly set flag bytes) and reports differences from the table; checking happens in playtests. T13 checks only easily reachable locations | decided 2026-11-24 |
 | E20 | Release repo | Until the playtest everything stays in the fork. For the beta release (F10) a repo of its own `junkx420/Prime3AP` (description "Metroid Prime 3: Corruption for Archipelago") with only APWorld, client, patch tool, guide, GPLv3; `.apworld` and EXE as GitHub release assets. The fork stays the source for logic and patcher | decided 2026-11-25 |
 | E21 | Project language | **English** for all project content (code, comments, logs, tests, docs, SPEC/STATUS); conversation with the user stays German | decided 2026-11-25 (user) |
+| E22 | Dead-end locations (T08 B5: Leviathan cores) | The converter computes for **every pickup node** an `escape_requirement` (path back to the ship/teleporter network, same machinery as E18) and ANDs it onto that location's access rule when it is not trivially satisfied. Logic then never expects a location the player cannot leave. Side effect: the exit item cannot be placed at its own dead end (accepted). Additionally the client warns when the player enters a Leviathan seed without the exit item (T26) | decided 2026-11-25 |
