@@ -26,6 +26,7 @@ from .inventory import ITEM_EFFECTS, START_INVENTORY_LOCATION, desired_value, ef
 from .learning import LearningMode
 from .memory import ConnectionLost, ConnectStatus, MemoryAccess, MemoryAccessError
 from .seed_check import SeedCheck, SeedCheckResult, SeedStatus
+from .seed_warning import CORE_LOCATIONS, SeedWarning
 
 DEFAULT_POLL_INTERVAL = 0.5
 RECONNECT_DELAY = 5.0
@@ -68,6 +69,16 @@ class MP3CommandProcessor(ClientCommandProcessor):
         """Shows the result of the seed check (does the ISO belong to this slot?)."""
         self.output(self.ctx.seed_check.result.message())
 
+    def _cmd_seedwarn(self, value: str = "") -> None:
+        """Leviathan seed warnings: /seedwarn on|off (no argument: status)."""
+        value = value.lower()
+        if value and value not in ("on", "off"):
+            self.output("Usage: /seedwarn on|off")
+            return
+        if value:
+            self.ctx.seed_warning.enabled = value == "on"
+        self.output(f"Leviathan seed warnings {'on' if self.ctx.seed_warning.enabled else 'off'}.")
+
     def _cmd_inventory(self) -> None:
         """Shows target and current value of the inventory slots the client manages (as of the last poll)."""
         for line in self.ctx.inventory_lines():
@@ -107,6 +118,7 @@ class MP3Context(CommonContext):
             learning_log = Utils.user_path("logs", f"MP3Client_learning_{stamp}.jsonl")
         self.learning = LearningMode(self.table, learning_log, logger, enabled=learning)
         self.seed_check = SeedCheck()
+        self.seed_warning = SeedWarning()
         self.giver = ItemGiver(memory, logger)
         self.goal = GoalDetector()
         self.goal_detected = False  # end sequence seen in this client session (T17)
@@ -142,11 +154,23 @@ class MP3Context(CommonContext):
             if identity != self._announced_identity:
                 self._announced_identity = identity
                 self._announced = 0
+                self.seed_warning.core_items.clear()
+                self.seed_warning.reset_visit()
+            core_locations = sorted(CORE_LOCATIONS & self.server_locations)
+            if core_locations:
+                Utils.async_start(self.send_msgs([{"cmd": "LocationScouts", "locations": core_locations,
+                                                   "create_as_hint": 0}]), name="Scout Leviathan cores")
             # CommonClient sends locations_checked itself on Connected; locations only get there once the seed ID
             # matches this seed/slot (T18). The check runs in the next ingame poll.
             self.watcher_event.set()
         elif cmd == "ReceivedItems":
             self.announce_received_items()
+        elif cmd == "LocationInfo":
+            for location_id in CORE_LOCATIONS & self.locations_info.keys():
+                scout = self.locations_info[location_id]
+                recipient = self.slot_info.get(scout.player)
+                for_this_slot = scout.player == self.slot or (recipient and self.slot in recipient.group_members)
+                self.seed_warning.core_items[location_id] = ITEM_ID_TO_NAME.get(scout.item) if for_this_slot else None
 
     def _check_slot_data_items(self) -> None:
         """Item IDs and names from ``slot_data`` must match this APWorld (otherwise a different version)."""
@@ -241,6 +265,7 @@ class MP3Context(CommonContext):
                 # other ISO or other seed/slot: what was detected belonged to the old game
                 self.detector.reset()
                 self.giver.reset()
+                self.seed_warning.reset_visit()
         return result
 
     # ---- item giving (T07) ------------------------------------------------------------------------------------- #
@@ -354,6 +379,7 @@ class MP3Context(CommonContext):
             if self._was_ingame or self.dolphin_status.startswith("Connected to Dolphin"):
                 self._status("Lost connection to Dolphin, reconnecting ...", logging.WARNING)
             self._leave_game()
+            self.seed_warning.reset_visit()
             self.game_state = None
             result = self.memory.connect()
             if result.status is not ConnectStatus.CONNECTED:
@@ -391,6 +417,10 @@ class MP3Context(CommonContext):
                 self.giver.reset()
             else:
                 await self.give_items(state)
+            if seed.ok:
+                warning = self.seed_warning.observe(self.memory, state)
+                if warning:
+                    logger.warning(warning, extra={"compact_gui": True})
             await self.send_goal()
             return self.poll_interval
         except ConnectionLost as exc:

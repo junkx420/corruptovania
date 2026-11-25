@@ -115,6 +115,11 @@ class FakeMemory(MemoryAccess):
         self.set_item_percentage(item_percentage)
         self.poke(game.slot_address(PLAYER_STATE, game.SLOT_POWER_BEAM), struct.pack(">II", power_beam, power_beam))
 
+    def set_world(self, world_id: int) -> None:
+        """Change the current world without reloading the game state or inventory."""
+        game_state = struct.unpack(">I", self.peek(game.GAME_STATE_POINTER, 4))[0]
+        self.poke_u64(game_state + game.OFF_WORLD_ID, world_id)
+
     # ---- inventory ---- #
     def slot(self, slot: int) -> tuple[int, int]:
         return struct.unpack(">II", self.peek(game.slot_address(PLAYER_STATE, slot), 8))

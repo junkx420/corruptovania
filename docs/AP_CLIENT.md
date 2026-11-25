@@ -55,6 +55,7 @@ Commands in the client:
 |---|---|
 | `/dolphin` | connection and game state (ingame, world, ItemPercentage), seed check, counts of locations/items/writes |
 | `/seed` | result of the seed check |
+| `/seedwarn [on\|off]` | toggle Leviathan seed warnings or show their status |
 | `/inventory` | target and current value of every slot the client manages (as of the last poll), blocked/given-up slots |
 | `/blocks` | flag blocks found per world (addresses), rejected blocks, number/duration of scans |
 | `/learning [on\|off]` | toggle the learning mode or show its status, log file, entries/warnings |
@@ -91,6 +92,7 @@ Commands in the client:
 6. **Learning mode** (section 7), independent of the seed check.
 7. **Goal** (section 6): end sequence after Aurora Unit 313 detected → no item giving in this poll, `CLIENT_GOAL` once.
 8. **Item giving** (section 4, only with a server connection and a passed seed check).
+9. **Leviathan seed warning** (section 5.1): check the exit requirements once per visit after the seed check passes.
 
 ## 4. Item giving (T07, SPEC E9, E11)
 
@@ -210,6 +212,27 @@ Details:
 - When the status leaves `OK` (other ISO loaded, other slot connected), the client forgets the locations it confirmed
   and resets the item giver.
 - Status changes are logged once (errors as `ERROR`); `/seed` shows the current status.
+
+### 5.1 Leviathan seed warnings (T26)
+
+When you enter a Leviathan seed world, the client checks the current inventory and prints a separate
+`WARNING - LEVIATHAN SEED` line if you could get stuck after the boss. Get the missing upgrade or ammo before
+the fight. The warning appears at most once per visit and can appear again after you leave for another world and
+return. A loading pause in the same world does not repeat it.
+
+| World | Exit requirements | Core pickup index |
+|---|---|---|
+| Bryyo Seed | Hyper Ball | 98 |
+| SkyTown Elysia Seed | Hyper Missile and at least 4 missiles currently available | 97 |
+| Pirate Homeworld Seed | Hyper Grapple and Grapple Voltage | 99 |
+
+The client requests all three core placements in one `LocationScouts` packet upon connecting and caches the replies
+for that seed and slot. The scout does not create hints. A core pickup that supplies a missing exit upgrade to this
+slot satisfies that upgrade's requirement. Any other missing requirement still triggers the warning. The check waits
+for the relevant scout reply and a valid in-game inventory. Cached replies also work while the server is disconnected.
+
+Warnings are on by default. Use `/seedwarn off` or `/seedwarn on` to change the setting for the current client session.
+The next live playtest will check the warning in Dolphin or PrimeHack.
 
 ## 6. Goal (T17, measured in T08)
 
@@ -361,7 +384,7 @@ in the Hangar Bay greyed out while the ship still held an object with the Ship G
 
 ```powershell
 $env:AP_TEST_WORLDS = "metroidprime3"
-.venv\Scripts\python.exe -m pytest worlds/metroidprime3/test/test_client.py worlds/metroidprime3/test/test_client_items.py worlds/metroidprime3/test/test_client_goal.py -q
+.venv\Scripts\python.exe -m pytest worlds/metroidprime3/test/test_client.py worlds/metroidprime3/test/test_client_items.py worlds/metroidprime3/test/test_client_goal.py worlds/metroidprime3/test/test_client_seed_warning.py -q
 ```
 
 Fake memory: `test/fake_memory.py` (MEM1 as a `bytearray`, counts accesses, creates state pointers, blocks, the starting
@@ -394,6 +417,9 @@ and empty inventory, two consecutive polls, slot 41 never written; whole client:
 in the end sequence (suit/grapples stay as the game set them), repeat after reloading before the final battle (logged
 again, sent once), wrong seed → nothing, detected offline → sent after reconnecting, no goal without the end sequence.
 
+`test_client_seed_warning.py` (T26): correct world and inventory requirements for each seed, private core scouting and
+recipient filtering, ammo amount versus capacity, one warning per visit, and `/seedwarn on|off`.
+
 Optionally against a real memory dump (T10, 24 MiB MEM1):
 `$env:MP3_MEM1_SNAPSHOT = "<path>\D2_mem1.bin"` – expects Norion `0x80A13AA0` (locations 3, 4), Valhalla `0x80A49CC0`
 (location 11), 14 worlds, the rejected PHC block.
@@ -404,9 +430,6 @@ Optionally against a real memory dump (T10, 24 MiB MEM1):
   kill itself; slot 41 after loading a save made on Phaaze not measured.
 - **Received Energy Tanks are empty:** the client raises the tank count, but the current energy (health) is not
   refilled (address unknown, `AP_PLAYTEST_T08.md` B1). Saving at the ship or energy pickups fill them.
-- **No warning before the Leviathan cores:** entering a Leviathan seed without its exit item (Bryyo: Hyper Ball,
-  Elysia: Hyper Missile + missiles, Pirate Homeworld: Hyper Grapple + Grapple Voltage) softlocks after the boss when the
-  core pickup is something else (logic gap, `AP_PLAYTEST_T08.md` B5). A warning in the client window is planned.
 - **Savestates:** a Dolphin savestate changes RAM without a loading phase, so the "settle 2 polls" rule does not apply
   and the learning mode may log a false "pickup" (ItemPercentage jump). Harmless (absolute targets).
 - **Death state** not readable; writes during the death animation are possible (harmless, the save overwrites them).
