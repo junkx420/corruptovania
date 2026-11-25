@@ -113,8 +113,10 @@ memory (`prime_remote_connector.py:155`). IDs from 1000 on are pure logic resour
 | 50 | HyperShot | `+0x2AC` | `0x80995DCC` | 2 |
 | 51 | CommandVisorJammed | `+0x2B8` | `0x80995DD8` | 1 |
 | 52 | EnergyCellsUsed | `+0x2C4` | `0x80995DE4` | 9 |
-| 62–69 | Stat_EnemiesKilled, Stat_ShotsFired, Stat_DamageReceived, Stat_DataSaves, Stat_HypermodeUses, Stat_CommandoKills, Stat_TinCanHighScore, Stat_TinCanCurrentScore | `+0x33C` … `+0x390` | `0x80995E5C` … `0x80995EB0` | 99999 |
-| 1000–1003 | MissileLauncher, ShipMissileLauncher, TemporaryMissile, TemporaryShipMissile | – (not in memory) | – | – |
+| 62–67 | Stat_EnemiesKilled, Stat_ShotsFired, Stat_DamageReceived, Stat_DataSaves, Stat_HypermodeUses, Stat_CommandoKills | `+0x33C` … `+0x378` | `0x80995E5C` … `0x80995E98` | 99999 |
+| 68 | Stat_TinCanHighScore (locked Missiles, +5 per Missile Expansion) | `+0x384` | `0x80995EA4` | 99999 (17 saved bits each for amount and capacity) |
+| 69 | Stat_TinCanCurrentScore | `+0x390` | `0x80995EB0` | 99999 (unsaved, reloads as 0/0) |
+| 1000–1003 | MissileLauncher, ShipMissileLauncher, TemporaryMissile, TemporaryShipMissile | – (logic IDs; locked Missiles are stored in slot 68) | – | – |
 
 IDs 43, 47 and 53–61 are missing in `header.json`. The slots exist in the array because it reaches at least ID 69. Their content
 was not checked.
@@ -185,9 +187,12 @@ is not read by the connector, only the world.
 
 Every collected pickup increases `ItemPercentage` (ID 21) by 1, in `amount` **and** `capacity`
 (0/100 → 1/101 → 2/102). This fits with every pickup in `pickup-database.json` also giving `"ItemPercentage": 1`
-(e.g. line 137). This counter is the only value that changes with **every** pickup. Even a
-"Locked Missile Expansion" (without Missile Launcher) changes only it, and `Missile` stays 0/0 because the ammo goes into the pure
-logic resource `TemporaryMissile` (ID 1002, not in memory) (`pickup-database.json:737-754`).
+(e.g. line 137). This counter is the only value that changes with **every** pickup. A locked Missile Expansion
+(without the Missile Launcher) also adds 5 to both amount and capacity in slot 68 while slot 4 stays at 0/0.
+The game transfers the locked ammo to slot 4 at the next Missile pickup once slot 4 is nonzero
+([AP_LIVE_TESTS.md](AP_LIVE_TESTS.md), tests A and C). Slot 68 saves 17 bits each for amount and capacity.
+Slot 69 stayed at 0/0 in test C and reloads as 0/0 because it is unsaved
+([AP_SLOT_LIMITS.md](AP_SLOT_LIMITS.md), sections 3 and 4).
 
 ### Proposal for the AP client (T05/T06)
 

@@ -10,7 +10,10 @@ container names one) and ``--name <player>``.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from queue import Empty, SimpleQueue
 
 from .patcher import build, patch_data
 
@@ -64,7 +67,58 @@ def is_up_to_date(out: Path, data: patch_data.PatchData, tools: Path | None) -> 
     return found == data.seed_id
 
 
-def make_iso(patch_file: Path) -> tuple[Path, dict]:
+def _patch_with_window(patch: Callable[[build.ProgressCallback], build.PatchResult]) -> build.PatchResult:
+    try:
+        from tkinter import TclError, Tk, ttk
+    except ImportError as error:
+        logger.warning("Patch progress window unavailable: %s", error)
+        return patch(logger.info)
+    try:
+        root = Tk()
+    except TclError as error:
+        logger.warning("Patch progress window unavailable: %s", error)
+        return patch(logger.info)
+
+    messages: SimpleQueue[str] = SimpleQueue()
+
+    def report(message: str) -> None:
+        logger.info(message)
+        messages.put(message)
+
+    try:
+        root.title("Metroid Prime 3 Patch")
+        root.resizable(False, False)
+        # Keep the window open while the patcher is writing the ISO.
+        root.protocol("WM_DELETE_WINDOW", root.bell)
+        status = ttk.Label(root, text="Preparing to patch...", width=62, wraplength=440, padding=20)
+        status.pack()
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(patch, report)
+
+            def refresh() -> None:
+                finished = future.done()
+                try:
+                    while True:
+                        status.configure(text=messages.get_nowait())
+                except Empty:
+                    pass
+                if not finished:
+                    root.after(50, refresh)
+                elif future.exception() is not None:
+                    root.quit()
+                else:
+                    status.configure(text="Done. Starting the Metroid Prime 3 Client...")
+                    root.after(1200, root.quit)
+
+            root.after(0, refresh)
+            root.mainloop()
+            return future.result()
+    finally:
+        root.destroy()
+
+
+def make_iso(patch_file: Path, *, gui: bool = True) -> tuple[Path, dict]:
     """Build (or reuse) the patched ISO for ``patch_file``. Returns (ISO path, container manifest)."""
     import settings as ap_settings
 
@@ -73,7 +127,12 @@ def make_iso(patch_file: Path) -> tuple[Path, dict]:
 
     data, manifest = patch_data.read_container(patch_file)
     options = MP3World.settings
-    iso = Path(options.iso_file)  # opens a file dialog if missing; validate() checks the game ID
+    no_gui = ap_settings.no_gui
+    ap_settings.no_gui = no_gui or not gui
+    try:
+        iso = Path(options.iso_file)  # opens a file dialog if missing and GUI is enabled
+    finally:
+        ap_settings.no_gui = no_gui
     if ap_settings.get_settings().changed:
         ap_settings.get_settings().save()  # a launcher subprocess ends without atexit, so save now
     tools = tools_dir(str(options.tools_folder))
@@ -84,7 +143,11 @@ def make_iso(patch_file: Path) -> tuple[Path, dict]:
         return out, manifest
     logger.info("Patching %s -> %s (player %s, slot %d, seed %s)", iso, out, data.player_name, data.slot,
                 data.seed_name)
-    result = build.patch_iso(data, iso, out, tools_dir=tools, progress=logger.info)
+
+    def patch(progress: build.ProgressCallback) -> build.PatchResult:
+        return build.patch_iso(data, iso, out, tools_dir=tools, progress=progress)
+
+    result = _patch_with_window(patch) if gui else patch(logger.info)
     logger.info("Done: %s, game ID %s, seed ID %s", result.output, result.game_id, result.seed_id.hex())
     return out, manifest
 
@@ -97,11 +160,16 @@ def patch_and_launch(*args: str) -> None:
     patch_file, rest = split_args(args)
     if patch_file is None:
         raise ValueError("no .apmp3 file given")
+    gui = Utils.gui_enabled and "--nogui" not in rest
     try:
-        out, manifest = make_iso(Path(patch_file))
-    except Exception as error:  # show every failure; the launcher subprocess has no console
+        out, manifest = make_iso(Path(patch_file), gui=gui)
+    except Exception as error:
         logger.exception("Building the ISO from %s failed", patch_file)
-        Utils.messagebox("Metroid Prime 3 – patch failed", f"{patch_file}:\n{error}", error=True)
+        if gui:
+            try:
+                Utils.messagebox("Metroid Prime 3 – patch failed", f"{patch_file}:\n{error}", error=True)
+            except Exception:
+                logger.exception("Patch error dialog unavailable")
         return
     logger.info("Load %s in Dolphin/PrimeHack. Starting Metroid Prime 3 Client.", out)
 

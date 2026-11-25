@@ -197,7 +197,7 @@ Everything the client needs for the target state (E11: target = starting items +
 
 Resources → inventory slot (game memory) is the client's business (T07, `docs/AP_MEMORY_MAP.md`).
 
-## 6. Opening the patch file: launcher (T05b)
+## 6. Opening the patch file: launcher (T05b, T23)
 
 The launcher component **"Metroid Prime 3 Client"** (T06) now recognises `.apmp3` (`file_identifier`). Without an
 `.apmp3` it only starts the client, as before.
@@ -207,19 +207,22 @@ Ways to open an `.apmp3`:
 - double click on the `.apmp3` if the extension is associated with the Archipelago launcher (with an installed
   Archipelago via "Open with" → `ArchipelagoLauncher.exe`),
 - in the launcher **"Open Patch"** and choose the file, or drag the file onto the launcher window,
-- command line: `.venv\Scripts\python.exe Launcher.py <file.apmp3>` (client arguments after `--`, e.g. `-- --nogui`).
+- command line with the GUI disabled: `.venv\Scripts\python.exe Launcher.py <file.apmp3> -- --nogui`.
 
-Sequence (`open_patch.patch_and_launch`; in a process of its own when the launcher window is open):
+Sequence (`open_patch.patch_and_launch`; the launcher uses a separate process for GUI patch opens):
 
-1. Read the `.apmp3` (`patcher.patch_data.read_container`). Error → message window, no client.
+1. Read the `.apmp3` (`patcher.patch_data.read_container`). Patch errors go to the log and to an error dialog in GUI mode.
 2. Original ISO from the `host.yaml`, `metroidprime3_options.iso_file`. If the file is missing, a file dialog opens
    ("Metroid Prime 3: Corruption ISO (Wii PAL RM3P01, unmodified)"); the chosen path is saved in the `host.yaml` at
    once. Only the first 6 bytes are checked (game ID `RM3P01`; `RM3E01`/`RM3J01` with a warning from the patch tool),
-   no hash: that would read 4.7 GB on every access to the setting.
+   no hash: that would read 4.7 GB on every access to the setting. With `--nogui`, set `iso_file` in `host.yaml` before running.
 3. Target ISO `<name of the .apmp3>.iso` next to the `.apmp3` (or in `output_folder`). If an existing ISO there already
    carries this slot's seed ID, it is not patched again (a second double click starts the client at once).
-4. Patch tool (`patcher.build.patch_iso`, ~40 s). Progress in the log `logs\MetroidPrime3Patch_<time>.txt`; no window
-   is open while patching.
+4. Patch tool (`patcher.build.patch_iso`, ~40 s). A `tkinter` window displays the tool's six steps and briefly shows
+   `Done` after verification. Archipelago 0.6.8 starts **Open Patch** in a separate launcher process, so this window uses
+   the same toolkit as Archipelago's file picker and can run independently of the launcher's Kivy window. The patcher
+   runs on a worker thread so the window stays responsive. With `--nogui`, progress and errors go only to the console
+   and `logs\MetroidPrime3Patch_<time>.txt`.
 5. Start the Metroid Prime 3 Client, with `--connect <server>` (only if the `.apmp3` contains a server, i.e. comes from the
    WebHost) and `--name <player name>`; arguments passed explicitly take precedence.
 
@@ -235,8 +238,11 @@ metroidprime3_options:
 **Checked (T05b, command line):** `Launcher.py ..\out\AP_38224278823687041413_P2_Samus.apmp3 -- --nogui` with
 `iso_file` set: ISO built (seed ID read back), then client started, connected to the running PrimeHack
 ("game RM3P01 detected"). Second call: "already has seed ID …, not patching again", client starts at once. Broken
-`.apmp3` → error message, no client. **To be checked manually (GUI):** file dialog the first time, "Open Patch", dragging
-onto the window, double click with file association.
+`.apmp3` → error message, no client.
+
+**T23 GUI check (development clone):** Rename any existing target ISO for the selected `.apmp3` to keep a backup.
+Run `.venv\Scripts\python.exe Launcher.py`, select **Open Patch**, and choose the `.apmp3`. Check that the patch window
+shows the numbered steps and `Done`, then that the Metroid Prime 3 Client opens.
 
 ## 7. Packed `.apworld`
 
