@@ -48,7 +48,7 @@ Building blocks:
 ## 3a. Working rules for workers
 
 - Work happens on branch `archipelago`, remote `origin` = `junkx420/corruptovania`. `upstream` = original repo; never push there.
-- Every worker commits only the files released to them and pushes at the end. Run `git pull --rebase origin archipelago` first. Resolve conflicts in STATUS.md without changing other workers' rows.
+- Every worker commits only the files released to them and pushes at the end. Several workers share one working tree: commit only your own files, then `git pull --rebase --autostash origin archipelago`, then push. Never stash, reset or check out other workers' changes. Resolve conflicts in STATUS.md without changing other workers' rows.
 - Never into the repo: ISOs, game files, Dolphin, personal paths, builds (`build/`, `venv/`).
 - Project language is English: code, comments, log messages, tests, docs, SPEC/STATUS (E21). Workers talk to the user in German.
 - The APWorld must not depend on Randovania at runtime. The converter creates self-contained Python data.
