@@ -468,7 +468,7 @@ class MP3Context(CommonContext):
 
 def main(*args: str) -> None:
     Utils.init_logging("MetroidPrime3Client", exception_logger="Client")
-    parser = get_base_parser(description="Metroid Prime 3 Client (Dolphin/PrimeHack, PAL RM3P01)")
+    parser = get_base_parser(description="Metroid Prime 3 Client (Dolphin/PrimeHack, PAL RM3P01 and NTSC-U RM3E01)")
     parser.add_argument("--name", default=None, help="slot name")
     parser.add_argument("--poll-interval", type=float, default=DEFAULT_POLL_INTERVAL,
                         help=f"poll interval in seconds (default {DEFAULT_POLL_INTERVAL})")

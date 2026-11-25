@@ -13,11 +13,11 @@ from . import build, patch_data, seed_id, tools
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m worlds.metroidprime3.patcher",
-        description="Metroid Prime 3 (PAL RM3P01) Archipelago patch tool: AP patch data + original ISO -> patched ISO.",
+        description="Metroid Prime 3 Archipelago patch tool (PAL RM3P01, NTSC-U RM3E01).",
     )
     parser.add_argument("--patch", type=Path,
                         help="AP patch data: .apmp3 from Archipelago or JSON (docs/AP_PATCH_TOOL.md)")
-    parser.add_argument("--iso", type=Path, help="original, unmodified ISO (RM3P01)")
+    parser.add_argument("--iso", type=Path, help="original, unmodified ISO (RM3P01 or RM3E01)")
     parser.add_argument("--out", type=Path, help="patched ISO to write (overwritten if it exists)")
     parser.add_argument("--tools", type=Path, default=None, help=f"helper folder (default: ${build.TOOLS_ENV}, the "
                         "cache folder, a Corruptovania checkout, else download the tools ZIP on first use)")
@@ -25,6 +25,8 @@ def _parser() -> argparse.ArgumentParser:
                         help="cache folder for the downloaded tools (default: <Archipelago>/metroidprime3_tools)")
     parser.add_argument("--temp-dir", type=Path, default=None, help="where to extract (needs ~2x ISO size free)")
     parser.add_argument("--no-verify", action="store_true", help="skip reading back game ID and seed ID")
+    parser.add_argument("--mp3-update", action="store_true", help="apply MP3Update to the PAKs (NTSC-U only)")
+    parser.add_argument("--disable-deflicker", action="store_true", help="apply the Deflicker DOL patch (NTSC-U only)")
     parser.add_argument("--dry-run", action="store_true", help="only validate --patch and print the MP3Randomizer data")
     parser.add_argument("--read-seed-id", type=Path, metavar="ISO_OR_DOL",
                         help="print the seed ID of a patched ISO or main.dol and exit")
@@ -63,7 +65,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--iso and --out are required")
 
         result = build.patch_iso(
-            data, args.iso, args.out, tools_dir=_tools(args), temp_dir=args.temp_dir, verify=not args.no_verify
+            data, args.iso, args.out, tools_dir=_tools(args), temp_dir=args.temp_dir, verify=not args.no_verify,
+            mp3_update=args.mp3_update, disable_deflicker=args.disable_deflicker,
         )
     except (patch_data.PatchDataError, build.PatchToolError, ValueError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)

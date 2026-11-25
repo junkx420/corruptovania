@@ -1,4 +1,4 @@
-"""Read-only parser for the game data of Metroid Prime 3 (Wii, PAL RM3P01).
+"""Read-only parser for the game data of Metroid Prime 3 (Wii PAL RM3P01 and NTSC-U RM3E01).
 
 Reads from an extracted ISO (folder ``DATA/files`` or a folder that contains the
 ``*.pak`` directly):

@@ -6,10 +6,10 @@ Basis: `AP_PATCHER_CHANGES.md` (T16, `--ap-mode`, APItem), `AP_PATCHER_NOTES.md`
 
 > **Summary**
 > - Input: the patch file `.apmp3` from Archipelago (T05b, section 2.3) **or** a JSON file "AP patch data"
->   (section 2), and the unmodified PAL ISO `RM3P01`.
+>   (section 2), and an unmodified Wii standalone PAL `RM3P01` or NTSC-U `RM3E01` ISO.
 > - Same sequence as the Corruptovania exporter (extract, replace attract videos, patch paks, build ISO), but
->   MP3Randomizer **always runs with `--ap-mode`**, **without** MP3Update/Deflicker (E7), and the **seed ID** is written into
->   the build info of `main.dol` (T18 part 1).
+>   MP3Randomizer always runs with `--ap-mode` and the seed ID goes into the version-specific build info of `main.dol`
+>   (T18). MP3Update and Disable Deflicker are optional NTSC-U steps and default to off (T33).
 > - Standard library only: no runtime dependency on Randovania or Archipelago. The letter table and the
 >   checksum are copies of our own; a test compares them with the Randovania original.
 > - The checked-in `randovania/data/gollop_mp3_patcher/MP3Randomizer.exe` is now the T16 state (win-x86, one file).
@@ -25,6 +25,8 @@ In the Archipelago clone (APWorld linked in via junction, `AP_APWORLD_DEV.md` se
 
 Whether `.apmp3` or JSON, the tool recognises by the content (ZIP or not), not by the extension. More convenient for players:
 open the `.apmp3` in the Archipelago launcher (`AP_APWORLD_DEV.md` section 6); the launcher calls exactly this tool.
+Open Patch reuses an existing ISO with a matching seed ID. To build the same seed for both regions, use separate output
+folders or distinct CLI `--out` paths.
 
 Without Archipelago (any Python ≥ 3.10, e.g. the repo venv), from the repo root:
 
@@ -38,12 +40,14 @@ which needs Archipelago. The folder call only loads the package `patcher`.)
 | Option | Meaning |
 |---|---|
 | `--patch` | `.apmp3` (section 2.3) or AP patch data as JSON (section 2) |
-| `--iso` | original ISO, unmodified (`RM3P01`; `RM3E01`/`RM3J01` work with a warning, untested) |
+| `--iso` | Original unmodified ISO (`RM3P01` or `RM3E01`). `RM3J01` remains experimental and emits a warning. |
 | `--out` | target ISO (is overwritten). Must not be the input ISO |
 | `--tools` | folder with the helper programs (default: lookup order of section 3.1, downloads the tools ZIP on first use) |
 | `--tools-cache` | cache folder for the downloaded tools (default: `<Archipelago>/metroidprime3_tools`, outside Archipelago `%LOCALAPPDATA%\metroidprime3_tools`) |
 | `--temp-dir` | place for the extraction (default: `%TEMP%`; needs about 2 × ISO size free) |
 | `--no-verify` | do not read back game ID and seed ID in the target ISO |
+| `--mp3-update` | apply the ten MP3Update PAK patches before randomizing (NTSC-U only, default off) |
+| `--disable-deflicker` | apply the Deflicker patch to `main.dol` before writing the seed ID (NTSC-U only, default off) |
 | `--dry-run` | only check `--patch` and print the data for MP3Randomizer |
 | `--read-seed-id <iso\|dol>` | print the seed ID of an ISO or a `main.dol` and exit |
 
@@ -118,9 +122,10 @@ except `Power Beam` and `CannonBall` (the C# decoder does not know `0` and `L`, 
 of the APWorld are allowed (test). Location 0 is not in the patch data (E13/E17); the tool puts its vanilla item
 Hypermode there, the patcher never touches location 0 anyway.
 
-Fixed (not in the format, E3/E7/E15): cosmetics (no random door/welding colours, default suit), no Phaaze shortcut,
-no MP3Update/Deflicker, missile/ship-missile-required off (`--ap-mode` sets this anyway), `--hyper-hints --fast-flying`
-as in the exporter.
+The patch tool uses the default suit and door/welding colours, skips the Phaaze shortcut and sets
+`--hyper-hints --fast-flying` as in the exporter. AP mode disables the missile and ship-missile requirements
+(E3/E7/E15). MP3Update and Disable Deflicker are local build options outside the patch data format. Both default to off,
+including in Open Patch.
 
 **Defaults = starter preset**, as Randovania's `patch_data_factory` created them for seed IVG2J7OR
 (`build/seed/t01.patcher.json`): `starting_items` gives Power Beam, Charge Beam, Morph Ball Bombs, Scan Visor, Morph Ball,
@@ -159,9 +164,9 @@ generated `.apmp3` equals `make_seed_id(seed_name, slot)`.
   (`AP_MEMORY_MAP.md`, row "Layout UUID"). Pure data, no code reads the string.
 - Addresses (own copy from open-prime-rando `dol_versions.py`, `patcher/seed_id.py`):
 
-| Version | Game ID | Build string address | Seed ID in RAM | PAL DOL file offset |
+| Version | Game ID | Build string address | Seed ID in RAM | DOL file offsets |
 |---|---|---|---|---|
-| Wii NTSC | RM3E01 | `0x805822B0` | `0x805822B6`–`0x805822C5` | – |
+| Wii NTSC-U | RM3E01 | `0x805822B0` | `0x805822B6`–`0x805822C5` | build string `0x57E390`, ID `0x57E396` (T33) |
 | Wii PAL | RM3P01 | `0x805843A8` | `0x805843AE`–`0x805843BD` | build string `0x580488` (data section 11), ID `0x58048E` |
 | Wii NTSC-J | RM3J01 | `0x80587C2C` | `0x80587C32`–`0x80587C41` | – |
 
@@ -210,15 +215,16 @@ MP3Randomizer, wit). `APPatch` is an `APPlayerContainer` with `procedure: "custo
 ## 3. Requirements
 
 - **Windows** (the helper programs are `.exe`). Python ≥ 3.10, standard library only.
-- Helper programs (only what the PAL build without MP3Update/Deflicker runs, T28): `MP3Randomizer.exe` (T16 build,
+- The default build (T28) requires `MP3Randomizer.exe` (T16 build,
   see 4), `lzokay/lzokay.dll` (32-bit), `nodtool/nodtool.exe`, `wit/bin/wit.exe` with the four Cygwin DLLs it imports
   (`cygwin1.dll`, `cygcrypto-1.1.dll`, `cygncursesw-10.dll`, `cygz.dll`, from its PE import table),
-  `dummy_attract/attract01.thp`, `dummy_attract/Attract02.thp`. Not needed: `hpatchz.exe`, `MP3Update/`, the `.bat`
-  files and the rest of `wit/bin`. If a file is missing, the tool aborts before extracting.
+  `dummy_attract/attract01.thp`, `dummy_attract/Attract02.thp`. Optional NTSC-U patches also require `hpatchz.exe`
+  and the selected `.hdiff` files. If a required file is missing, the tool aborts before extracting.
 - `nodtool.exe` needs the Microsoft Visual C++ 2015-2022 Redistributable (`MSVCP140.dll`, `VCRUNTIME140.dll`). If it is
   missing, the error names the redistributable. `MP3Randomizer.exe` is self-contained (.NET runtime inside), `wit.exe`
   only needs its Cygwin DLLs.
-- Original ISO PAL `RM3P01` (Rev 0, MD5 `f4c734a1e191c45e9ac037d92e14485d`). Trilogy is rejected.
+- Original Wii standalone ISO. Tested revisions are PAL `RM3P01` Rev 0 (MD5 `f4c734a1e191c45e9ac037d92e14485d`)
+  and NTSC-U `RM3E01` Rev 0. The patcher rejects Trilogy by its game ID before extraction.
 - Free space: about 2 × ISO size in `--temp-dir` plus the target ISO (≈ 4.5 GB). Duration about 1 minute.
 
 ### 3.1 Where the helper programs come from (T28)
@@ -253,6 +259,12 @@ put it unextracted into `<cache>`, or extract it anywhere and set `tools_folder`
 `patch_iso` resolves the tools after the game ID check and before extracting, so the download is part of the patch
 window. `read_seed_id_from_iso` never downloads unless `allow_download=True` (the CLI's `--read-seed-id` passes it; the
 launcher's "is the existing ISO up to date" check does not).
+
+### 3.2 Optional NTSC-U patches (T33)
+
+Use `--tools <folder>` with the normal helpers, `hpatchz.exe` and the selected files under `MP3Update/`. A Corruptovania
+checkout already has those files in `randovania/data/gollop_mp3_patcher`. The published T28 tools ZIP supplies the
+default build helpers. See [AP_NTSC.md](AP_NTSC.md) for the file list, redistribution notices and test results.
 
 ## 4. Checked-in MP3Randomizer EXE (T16 build)
 
@@ -308,7 +320,7 @@ See `STATUS.md` T05a. Details:
 3. ~~No launcher entry / no `.apmp3`~~: done in T05b (section 2.3, `AP_APWORLD_DEV.md` section 6).
 4. **Texts**: foreign pickups all show "Archipelago-Item" (E14); player/item name per location is missing (after the MVP).
    English only (like all patcher texts).
-5. **Only PAL tested.** NTSC-U/J are accepted with a warning, addresses only from open-prime-rando.
+5. NTSC-J (`RM3J01`) remains an untested patcher input and sends a warning. The client supports PAL and NTSC-U.
 6. Nobody checks the seed ID before the client (T18 part 2) reads it.
 7. Starting location and starting items are patcher strings in the format; structured starting items come with F9 (options).
 8. The EXE is 32 MB and lives in Git as a binary file (every new version enlarges the history).

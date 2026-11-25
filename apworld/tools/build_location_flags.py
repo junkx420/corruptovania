@@ -415,7 +415,7 @@ def render(results: list[Result]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("game_dir", help="extracted PAL ISO (folder with DATA/files)")
+    ap.add_argument("game_dir", help="extracted PAL or NTSC-U ISO (folder with DATA/files)")
     ap.add_argument("--locations", default=DEFAULT_LOCATIONS)
     ap.add_argument("--output", default=DEFAULT_OUTPUT)
     ap.add_argument("--check", action="store_true", help="compare only, exit 1 on difference")

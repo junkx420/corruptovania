@@ -4,10 +4,10 @@ Usage from the repo root directory:
 
     venv/Scripts/python.exe -m pytest apworld/tools/test_savw_parser.py -v
 
-The tests against the game data need an extracted PAL ISO (RM3P01), e.g. with
-``DolphinTool extract -i mp3.iso -o <folder> -g``. The folder (which contains ``DATA/files``)
-is given by the environment variable ``MP3_PAL_EXTRACTED``. Without it these tests are
-skipped. Patched ISOs (Corruptovania patcher) yield the same table.
+The game-data tests use extracted PAL (RM3P01) and NTSC-U (RM3E01) ISOs, e.g. with
+``DolphinTool extract -i mp3.iso -o <folder> -g``. Set ``MP3_PAL_EXTRACTED`` and/or
+``MP3_NTSC_EXTRACTED`` to the folders containing ``DATA/files``. The tests skip each
+region when its variable is unset. Patched PAL ISOs yield the same table.
 """
 
 from __future__ import annotations
@@ -25,11 +25,6 @@ import pytest
 TOOLS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = TOOLS_DIR.parents[1]
 COMMITTED_TABLE = REPO_ROOT / "apworld" / "metroidprime3" / "location_flags.py"
-GAME_DIR = os.environ.get("MP3_PAL_EXTRACTED")
-
-needs_game = pytest.mark.skipif(
-    not GAME_DIR, reason="MP3_PAL_EXTRACTED not set (path to the extracted PAL ISO)"
-)
 
 VALHALLA = 0xC133F919C108BDF9
 NORION = 0x6FB8EF2A9523C343
@@ -156,13 +151,16 @@ def test_committed_table_measured_points():
 
 
 # --------------------------------------------------------------------------- #
-# With game data (MP3_PAL_EXTRACTED)
+# With game data
 # --------------------------------------------------------------------------- #
 
 
-@pytest.fixture(scope="module")
-def game():
-    return sp.GameFiles(GAME_DIR)
+@pytest.fixture(scope="module", params=("MP3_PAL_EXTRACTED", "MP3_NTSC_EXTRACTED"))
+def game(request):
+    env = request.param
+    if not (path := os.environ.get(env)):
+        pytest.skip(f"{env} not set (path to the extracted ISO)")
+    return sp.GameFiles(path)
 
 
 @pytest.fixture(scope="module")
@@ -170,7 +168,6 @@ def results(game):
     return {r.index: r for r in blf.analyse(game, blf.read_pickup_locations(blf.DEFAULT_LOCATIONS))}
 
 
-@needs_game
 def test_measured_points_from_game_data(results):
     for idx, (mlvl, byte, obj) in MEASURED.items():
         r = results[idx]
@@ -178,7 +175,6 @@ def test_measured_points_from_game_data(results):
         assert r.status == "certain"
 
 
-@needs_game
 def test_flag_block_is_memory_relay_list(game):
     """Byte i = entry i of SAVW list 1, and this list contains only Memory Relays."""
     for idx, (mlvl_id, byte, _obj) in MEASURED.items():
@@ -191,7 +187,6 @@ def test_flag_block_is_memory_relay_list(game):
         assert types[relay.instance_id] == "MRLY", idx
 
 
-@needs_game
 def test_special_function_savw_object(results):
     for idx in SPECIAL_FUNCTION_LOCATIONS:
         r = results[idx]
@@ -200,7 +195,6 @@ def test_special_function_savw_object(results):
         assert r.byte_index is not None
 
 
-@needs_game
 def test_all_savw_parse(game):
     n = 0
     for pak, res in game.iter_type("SAVW"):
@@ -210,7 +204,6 @@ def test_all_savw_parse(game):
     assert n == 19  # 16 from Worlds.pak, plus 2 from FrontEnd.pak and 1 from UniverseArea.pak
 
 
-@needs_game
 def test_committed_table_is_up_to_date(results):
     text = blf.render([results[i] for i in sorted(results)])
     assert COMMITTED_TABLE.read_text(encoding="utf-8") == text, (

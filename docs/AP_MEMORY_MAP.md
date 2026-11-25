@@ -11,7 +11,8 @@ Checked live with **PAL `RM3P01`** (Rev 0), seed `IVG2J7OR` from T01, Dolphin 26
 > - **Today Randovania can neither give items into the game for MP3 nor detect location checks.**
 >   Neither is implemented in the connector (sections 4 and 5). For the AP client (T06/T07) these are the
 >   two gaps that have to be built new.
-> - NTSC-U (`RM3E01`) and NTSC-J (`RM3J01`) are backed **only by code** and not checked live.
+> - T33 verifies the NTSC-U (`RM3E01`) client addresses in the DOL and compares its data against PAL.
+>   See [AP_NTSC.md](AP_NTSC.md) for the evidence and live results. NTSC-J (`RM3J01`) values come from code.
 
 Conventions:
 - All addresses are virtual Wii addresses (MEM1 `0x80000000–0x81800000`, `dolphin_executor.py:15-16`). All values
@@ -40,7 +41,7 @@ Source: `OPR/corruption/dol_versions.py:6-65`. The connector picks the version b
 | `powerup_functions.decr_pickup` | `0x8019151C` | `0x8019222C` | `0x801936D0` | `dol_versions.py:28,45,62` |
 | `string_display` | `None` | `None` | `None` | `dol_versions.py:17,41,58` |
 | `sda2_base` / `sda13_base` | `0x806869C0` / `0x806801C0` | `0x80688FE0` / `0x806827C0` | `0x8068C840` / `0x80686000` | `dol_versions.py:12-13,36-37,53-54` (not used by the connector) |
-| **Status** | **code only** | **confirmed live** (except `powerup_functions`, `sda*`) | **code only** | |
+| **Status** | **T33 DOL comparison** (see [AP_NTSC.md](AP_NTSC.md) for scope) | **confirmed live** (except `powerup_functions`, `sda*`) | **code only** | |
 
 ---
 
@@ -286,6 +287,6 @@ Not checked live: `powerup_functions` (giving items), writes of any kind, NTSC-U
 1. Item giving (T07): test direct writing into the inventory slot live, including saving, loading, Energy Tank and beam switching.
 2. Location checks (T05/T06): counter item in the patcher, or find layer state addresses (section 5).
 3. Room address (area) for tracker or DeathLink, optional.
-4. Check NTSC-U addresses (`RM3E01`) live as soon as an ISO is available (E7).
+4. NTSC-U address verification is tracked in [AP_NTSC.md](AP_NTSC.md) (T33, SPEC E7).
 5. Layout UUID: the MP3 patcher does not write it. Mapping client ↔ seed needs a marker of its own
    (e.g. seed hash in the build string, as with `apply_build_info_patch`, `OPR/all_prime_dol_patches.py:316`).

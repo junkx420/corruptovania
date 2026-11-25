@@ -2,8 +2,8 @@
 
 Same steps as Randovania's prime3 exporter (``randovania/games/prime3/exporter/game_exporter.py``): extract with
 nodtool, replace the attract videos, stage the paks, run MP3Randomizer, rebuild with wit. Differences: MP3Randomizer
-always runs with ``--ap-mode`` (T16), MP3Update/Deflicker are never applied (PAL, SPEC E7), and the seed ID is written
-into ``main.dol`` (T18 part 1). No Randovania import; the helper programs come from a tools folder
+always runs with ``--ap-mode`` (T16), MP3Update/Deflicker are opt-in for NTSC-U, and the seed ID is written into
+``main.dol`` (T18 part 1). No Randovania import; the helper programs come from a tools folder
 (:func:`.tools.find_tools`: configured folder, ``$MP3AP_TOOLS_DIR``, cache, repo checkout, else downloaded on first
 use). Windows only for now.
 """
@@ -26,10 +26,14 @@ from .tools import TOOLS_ENV, PatchToolError
 
 ProgressCallback = Callable[[str], None]
 
-# Game IDs the tool accepts. PAL is the MVP version (E7) and the only one tested; NTSC-U/J have known DOL build
-# strings but were never patched with this tool.
-TESTED_GAME_IDS = ("RM3P01",)
-UNTESTED_GAME_IDS = ("RM3E01", "RM3J01")
+SUPPORTED_GAME_IDS = ("RM3P01", "RM3E01")
+UNTESTED_GAME_IDS = ("RM3J01",)
+
+# Same PAKs as Randovania's prime3 exporter. Deflicker is a separate DOL patch.
+MP3_UPDATE_PAKS = (
+    "FrontEnd", "InGameAudio", "NoARAM", "Metroid1", "Metroid3", "Metroid4", "Metroid5", "Metroid6", "Metroid7",
+    "UniverseArea",
+)
 
 RANDOMIZE_ELEMENTS = (
     "FrontEnd.pak",
@@ -120,10 +124,10 @@ def read_game_id(iso: Path) -> str:
 
 def check_input_game_id(iso: Path, progress: ProgressCallback) -> str:
     game_id = read_game_id(iso)
-    if game_id in TESTED_GAME_IDS:
+    if game_id in SUPPORTED_GAME_IDS:
         return game_id
     if game_id in UNTESTED_GAME_IDS:
-        progress(f"Warning: {game_id} is untested with the AP patch tool (only RM3P01 is, SPEC E7)")
+        progress(f"Warning: {game_id} is untested with the AP patch tool (supported: RM3P01 and RM3E01)")
         return game_id
     raise PatchToolError(
         f"{iso}: game ID {game_id!r} is not Metroid Prime 3: Corruption (Wii standalone RM3P01/RM3E01/RM3J01). "
@@ -155,6 +159,24 @@ def randomizer_command(toolchain: Toolchain, patch: PatchData, input_path: Path,
 def wit_copy_command(toolchain: Toolchain, data_dir: Path, out: Path) -> list[str]:
     # Same flags as game_exporter._build_wit_command for ISO output.
     return [str(toolchain.wit), "COPY", "-I", "-z", "--trunc", "--auto-split", "--overwrite", str(data_dir), str(out)]
+
+
+def _optional_patches(tools_dir: Path, data_dir: Path, mp3_update: bool, disable_deflicker: bool) -> list[list[str]]:
+    targets = []
+    if disable_deflicker:
+        targets.append((data_dir / "sys" / "main.dol", "main.hdiff"))
+    if mp3_update:
+        targets.extend((data_dir / "files" / f"{name}.pak", f"{name}.hdiff") for name in MP3_UPDATE_PAKS)
+    if not targets:
+        return []
+
+    hpatchz = tools_dir / "hpatchz.exe"
+    patches = [(target, tools_dir / "MP3Update" / diff) for target, diff in targets]
+    if missing := [path for path in (hpatchz, *(diff for _, diff in patches)) if not path.is_file()]:
+        names = ", ".join(str(path.relative_to(tools_dir)) for path in missing)
+        raise PatchToolError(f"missing optional NTSC-U patch files in {tools_dir}: {names}. "
+                             "Use --tools with a folder that contains MP3Update and hpatchz.")
+    return [[str(hpatchz), "-f", str(target), str(diff), str(target)] for target, diff in patches]
 
 
 def read_seed_id_from_iso(
@@ -196,6 +218,9 @@ def patch_iso(
     temp_dir: Path | None = None,
     progress: ProgressCallback = print,
     verify: bool = True,
+    *,
+    mp3_update: bool = False,
+    disable_deflicker: bool = False,
 ) -> PatchResult:
     iso, out = Path(iso), Path(out)
     if not iso.is_file():
@@ -205,8 +230,10 @@ def patch_iso(
     if not out.parent.is_dir():
         raise PatchToolError(f"output folder does not exist: {out.parent}")
     game_id = check_input_game_id(iso, progress)
+    if game_id != "RM3E01" and (mp3_update or disable_deflicker):
+        raise PatchToolError("MP3Update and Disable Deflicker require an NTSC-U RM3E01 ISO")
     # Before extracting: may download the tools ZIP on first use (progress goes to the T23 window).
-    tools_dir = tools_dir or tools_lib.find_tools(progress=progress)
+    tools_dir = Path(tools_dir or tools_lib.find_tools(progress=progress))
     toolchain = Toolchain.from_dir(tools_dir)
 
     # Fresh folders per run (like the exporter); a failed run leaves nothing behind.
@@ -217,6 +244,7 @@ def patch_iso(
         extract.mkdir()
         paks.mkdir()
         files = extract / "DATA" / "files"
+        optional_patches = _optional_patches(tools_dir, extract / "DATA", mp3_update, disable_deflicker)
 
         progress("[1/6] Extracting ISO...")
         run_tool([str(toolchain.nodtool), "extract", str(iso), str(extract)])
@@ -226,6 +254,11 @@ def patch_iso(
         progress("[2/6] Removing attract videos...")
         for name in DUMMY_ATTRACTS:
             shutil.copy(toolchain.dummy_attract_dir / name, files / "Video" / "FrontEnd" / name)
+
+        if optional_patches:
+            progress("Applying optional NTSC-U patches...")
+            for command in optional_patches:
+                run_tool(command)
 
         progress("[3/6] Copying paks...")
         for name in RANDOMIZE_ELEMENTS:

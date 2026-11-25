@@ -10,8 +10,8 @@ memory and pass them to :func:`seed_id_from_build_string`; compare the result wi
 connected room's ``seed_name`` and slot.
 
 Build string addresses: own copy of ``open_prime_rando.dol_patching.corruption.dol_versions.ALL_VERSIONS``
-(open-prime-rando 0.15.1, fields ``description``, ``build_string_address``, ``build_string``). PAL checked against the
-DOL of RM3P01 (file offset 0x580488 in data section 11) and live in T02.
+(open-prime-rando 0.15.1, fields ``description``, ``build_string_address``, ``build_string``). The build string was
+verified in the PAL DOL at file offset 0x580488 (T02, also checked live) and the NTSC-U DOL at 0x57E390 (T33).
 """
 
 from __future__ import annotations

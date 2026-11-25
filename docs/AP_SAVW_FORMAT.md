@@ -1,7 +1,7 @@
 # SAVW format and location flags (T12)
 
-As of 2026-11-24. Read only, game data stays outside the repo. Applies to Metroid Prime 3 Wii PAL `RM3P01`.
-NTSC-U is not checked. Everything that is only inferred from the data and not measured is marked as an **assumption**.
+Read only, game data stays outside the repo. Applies to Wii PAL `RM3P01` (T12) and NTSC-U `RM3E01` (T33).
+Everything that is only inferred from the data and not measured is marked as an **assumption**.
 
 > **Summary**
 > 1. The 1024-byte flag block per world (`AP_LIVE_TESTS.md`, test D) is the **state of the Memory Relays (MRLY)** from
@@ -32,10 +32,13 @@ With `--check` it only compares (exit 1 on a difference). Running it twice gives
 also with different `PYTHONHASHSEED`). Without `lzokay` (e.g. system Python) the parser uses a built-in
 LZO1X decompressor; checked on 1298 real segments, same result. Run time about 1.5 s.
 
-Tests (without game data 6 run, the 5 game-data tests are skipped):
+The suite runs six tests without game data and five more per supplied region.
 
 ```powershell
-$env:MP3_PAL_EXTRACTED = "..\pal_extract"; venv\Scripts\python.exe -m pytest apworld\tools\test_savw_parser.py -v
+$env:MP3_PAL_EXTRACTED = "..\pal_extract"
+$env:MP3_NTSC_EXTRACTED = "..\ntsc_extract"
+venv\Scripts\python.exe -I apworld\tools\build_location_flags.py $env:MP3_NTSC_EXTRACTED --check
+venv\Scripts\python.exe -m pytest apworld\tools\test_savw_parser.py -v
 ```
 
 Sources: parser `apworld/tools/savw_parser.py`. Patcher code `tools/prime3_patcher/MP3Randomizer/MP3Randomizer/`
@@ -234,4 +237,10 @@ pickup → relay → MRLY stay. The table from the patched T01 ISO is byte-ident
 2. Meaning of `W + 0x0C`, `W + 0x14`, the empty section after the scans and the three `u32` per variable.
 3. Where the state of list 3 (PCKP, GUID) lives at runtime, and what the second copy of the block in MEM1 is
    (`AP_LIVE_TESTS.md`, test D).
-4. NTSC-U `RM3E01`: format probably the same, asset IDs and lists not checked.
+
+## 7. NTSC-U comparison (T33)
+
+The original NTSC-U ISO produces a byte-identical `location_flags.py`. The client also validates the size of the
+world's Memory Relay list. Norion has 148 relays on NTSC-U (149 on PAL), and G.F.S. Valhalla has 198 (212 on PAL).
+The SAVW IDs and relay counts match for the other 12 worlds with AP locations. The comparison and optional MP3Update
+results are in [AP_NTSC.md](AP_NTSC.md).

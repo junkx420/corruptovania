@@ -52,8 +52,8 @@ DESC_FOURCC_OFFSET = 8
 DESC_ID_OFFSET = 16
 SAVW_OBJECT_LIST1_COUNT = 0x10
 
-# MLVL ID -> (SAVW ID, length of SAVW list 1). From PAL RM3P01: SAVW ID from MLVL + 0x14, list 1 from the SAVW
-# (apworld/tools/savw_parser.py, T12). Original ISO and patched ISO are identical.
+# MLVL ID -> (SAVW ID, length of SAVW list 1). SAVW ID from MLVL + 0x14, list 1 from the SAVW
+# (apworld/tools/savw_parser.py, T12/T33). NTSC-U has the same IDs and two shorter relay lists.
 SAVW_INFO: dict[int, tuple[int, int]] = {
     0x37A9E86F0A0CAF6F: (0x64021D5C7A946BD2, 77),  # G.F.S. Olympus
     0x6FB8EF2A9523C343: (0x732E1A63A1122AD3, 149),  # Norion
@@ -71,6 +71,15 @@ SAVW_INFO: dict[int, tuple[int, int]] = {
     0xDE97D48188CA8C99: (0x850046A2CF5AA17D, 6),  # Pirate Homeworld - Seed
 }
 assert set(SAVW_INFO) == set(WORLD_NAMES)
+
+SAVW_INFO_BY_GAME_ID = {
+    "RM3P01": SAVW_INFO,
+    "RM3E01": {
+        **SAVW_INFO,
+        0x6FB8EF2A9523C343: (0x732E1A63A1122AD3, 148),  # Norion
+        0xC133F919C108BDF9: (0x05630E8EB047656B, 198),  # G.F.S. Valhalla
+    },
+}
 
 DEFAULT_SCAN_RANGES: tuple[tuple[int, int], ...] = ((MEM1_START, MEM1_SIZE),)
 
@@ -122,7 +131,7 @@ class FlagBlockFinder:
         world, descriptor, _, savw_object, _, count = struct.unpack(">QIIIII", head[4:HEADER_SIZE])
         if world != world_id or count != FLAG_BLOCK_SIZE:
             return False
-        info = SAVW_INFO.get(world_id)
+        info = SAVW_INFO_BY_GAME_ID[self.memory.version.dol.game_id].get(world_id)
         if not in_ram(descriptor, DESC_ID_OFFSET + 8) or not in_ram(savw_object, SAVW_OBJECT_LIST1_COUNT + 4):
             return False
         desc = self.memory.read(descriptor, DESC_ID_OFFSET + 8)
@@ -136,10 +145,9 @@ class FlagBlockFinder:
                 return False
         return True
 
-    @staticmethod
-    def plausible(flags: bytes, world_id: int) -> bool:
+    def plausible(self, flags: bytes, world_id: int) -> bool:
         """Nothing may be set behind the last memory relay number of the world."""
-        info = SAVW_INFO.get(world_id)
+        info = SAVW_INFO_BY_GAME_ID[self.memory.version.dol.game_id].get(world_id)
         return info is None or not any(flags[info[1]:])
 
     # ---- search ------------------------------------------------------------------------------------------------ #

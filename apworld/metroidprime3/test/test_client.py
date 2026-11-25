@@ -159,10 +159,10 @@ class TestFlagBlockFinder(unittest.TestCase):
 
 class TestMemory(unittest.TestCase):
     def test_wrong_game_id_is_refused(self) -> None:
-        memory = FakeMemory(game_id=b"RM3E01")
+        memory = FakeMemory(game_id=b"R3ME01")
         result = memory.connect()
         self.assertIs(result.status, ConnectStatus.WRONG_GAME)
-        self.assertIn("RM3E01", result.message)
+        self.assertIn("R3ME01", result.message)
         self.assertFalse(memory.connected)
         self.assertFalse(memory.hooked)
         with self.assertRaises(NotConnected):

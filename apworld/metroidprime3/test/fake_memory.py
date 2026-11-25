@@ -20,6 +20,7 @@ SAVW_OBJECT_BASE = 0x80980000
 GAME_STATE_AFTER_LOAD = 0x80810000  # [0x80680234] after loading (T10: CGameState moves, PS stays)
 
 PAL = seed_id_module.version_for_game_id("RM3P01")
+NTSC_U = seed_id_module.version_for_game_id("RM3E01")
 
 # starting inventory of the AP ISO (starter preset, T01/T19 ``baseline``): (amount, capacity)
 START_INVENTORY: dict[int, tuple[int, int]] = {
@@ -47,6 +48,13 @@ class FakeMemory(MemoryAccess):
         self.reads: list[tuple[int, int]] = []
         self.writes: list[tuple[int, bytes]] = []
         self.revert: dict[int, tuple[int, int]] = {}  # slot -> value the game sets right after a write
+        self.dol_version = NTSC_U if game_id == b"RM3E01" else PAL
+        if game_id == b"RM3E01":
+            self.state_pointer, self.player_vtable, self.state_manager = 0x8067DC0C, 0x80592C78, 0x805C4F70
+            self.relay_counts = {0x6FB8EF2A9523C343: 148, 0xC133F919C108BDF9: 198}
+        else:
+            self.state_pointer, self.player_vtable, self.state_manager = 0x80680234, 0x80595238, 0x805C7570
+            self.relay_counts = {}
         self.poke(MEM1_START, game_id)
         self.set_seed_id(None)
 
@@ -93,20 +101,20 @@ class FakeMemory(MemoryAccess):
 
     # ---- seed ID (T18) ---- #
     def set_seed_id(self, seed_id: bytes | None) -> None:
-        """Build string of the PAL DOL; ``None`` = unpatched (original text, vanilla ISO)."""
-        raw = bytearray(PAL.build_string)
+        """Build string of the selected DOL; ``None`` = unpatched (original text, vanilla ISO)."""
+        raw = bytearray(self.dol_version.build_string)
         if seed_id is not None:
             raw[6:22] = seed_id
-        self.poke(PAL.build_string_address, bytes(raw))
+        self.poke(self.dol_version.build_string_address, bytes(raw))
 
     # ---- game state ---- #
     def set_ingame(self, world_id: int, item_percentage: int = 0, power_beam: int = 1,
                    game_state: int = GAME_STATE) -> None:
         """Ingame in ``world_id``. If the inventory is empty (new game), the starting inventory is created."""
-        self.poke_u32(game.CSTATE_MANAGER_GLOBAL + game.OFF_STATE_MANAGER_PLAYER_HOLDER, HOLDER)
+        self.poke_u32(self.state_manager + game.OFF_STATE_MANAGER_PLAYER_HOLDER, HOLDER)
         self.poke_u32(HOLDER + game.OFF_CPLAYER, CPLAYER)
-        self.poke_u32(CPLAYER, game.CPLAYER_VTABLE)
-        self.poke_u32(game.GAME_STATE_POINTER, game_state)
+        self.poke_u32(CPLAYER, self.player_vtable)
+        self.poke_u32(self.state_pointer, game_state)
         self.poke_u64(game_state + game.OFF_WORLD_ID, world_id)
         self.poke_u32(game_state + game.OFF_PLAYER_STATE, PLAYER_STATE)
         if power_beam and not any(self.peek(game.slot_address(PLAYER_STATE, 0), inventory.INVENTORY_SIZE)):
@@ -117,7 +125,7 @@ class FakeMemory(MemoryAccess):
 
     def set_world(self, world_id: int) -> None:
         """Change the current world without reloading the game state or inventory."""
-        game_state = struct.unpack(">I", self.peek(game.GAME_STATE_POINTER, 4))[0]
+        game_state = struct.unpack(">I", self.peek(self.state_pointer, 4))[0]
         self.poke_u64(game_state + game.OFF_WORLD_ID, world_id)
 
     # ---- inventory ---- #
@@ -137,7 +145,7 @@ class FakeMemory(MemoryAccess):
     def load(self, save: bytes, world_id: int) -> None:
         """Load a save or death + continue: inventory = save, new CGameState pointer (T10). The loading phase
         (CPlayer 0) is simulated by the test itself with ``set_menu`` + a poll when it needs one."""
-        current = struct.unpack(">I", self.peek(game.GAME_STATE_POINTER, 4))[0]
+        current = struct.unpack(">I", self.peek(self.state_pointer, 4))[0]
         game_state = GAME_STATE_AFTER_LOAD if current == GAME_STATE else GAME_STATE
         self.poke(game.slot_address(PLAYER_STATE, 0), save)
         self.set_ingame(world_id, item_percentage=self.slot(game.SLOT_ITEM_PERCENTAGE)[0], game_state=game_state)
@@ -164,6 +172,7 @@ class FakeMemory(MemoryAccess):
     def place_block(self, address: int, world_id: int, flags: bytes | None = None, savw_ok: bool = True) -> int:
         """Places a flag block with the full signature at ``W = address``."""
         savw_id, list1_len = flag_block.SAVW_INFO[world_id]
+        list1_len = self.relay_counts.get(world_id, list1_len)
         index = sorted(flag_block.SAVW_INFO).index(world_id)
         descriptor = DESCRIPTOR_BASE + index * 0x40
         savw_object = SAVW_OBJECT_BASE + index * 0x60

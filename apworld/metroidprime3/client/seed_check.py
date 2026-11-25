@@ -1,7 +1,7 @@
 """Seed check (T18 part 2): does the running ISO belong to the connected slot?
 
 The patch tool writes ``patcher.seed_id.make_seed_id(seed_name, slot)`` into bytes 6-22 of the build string of
-``main.dol`` (docs/AP_PATCH_TOOL.md 2.2, PAL RAM ``0x805843AE``). The client reads the build string from RAM
+``main.dol`` (docs/AP_PATCH_TOOL.md 2.2). The client reads the corresponding build string from RAM
 (``seed_id_from_build_string``, the same function the patch tool uses) and compares it with the ID it computes itself
 from the server's seed name (``RoomInfo.seed_name``) and its slot. Only with ``OK`` does the client send location checks
 and give items. Unpatched ISO (original text in the build string) = ``VANILLA``.
@@ -13,7 +13,7 @@ import enum
 from dataclasses import dataclass
 
 from ..patcher import seed_id as seed_id_module
-from .memory import EXPECTED_GAME_ID, MemoryAccess
+from .memory import MemoryAccess
 
 
 class SeedStatus(enum.Enum):
@@ -57,15 +57,15 @@ class SeedCheckResult:
 
 
 class SeedCheck:
-    def __init__(self, game_id: bytes = EXPECTED_GAME_ID) -> None:
-        self.version = seed_id_module.version_for_game_id(game_id.decode())
+    def __init__(self) -> None:
         self.result = SeedCheckResult(SeedStatus.WAITING)
 
     def read_found(self, memory: MemoryAccess) -> tuple[SeedStatus | None, bytes | None]:
         """Seed ID from RAM. ``(None, id)`` = read, otherwise ``(VANILLA|UNREADABLE, None)``."""
-        raw = memory.read(self.version.build_string_address, len(self.version.build_string))
+        version = memory.version.dol
+        raw = memory.read(version.build_string_address, len(version.build_string))
         try:
-            found = seed_id_module.seed_id_from_build_string(raw, self.version)
+            found = seed_id_module.seed_id_from_build_string(raw, version)
         except ValueError:
             return SeedStatus.UNREADABLE, None
         if found is None:

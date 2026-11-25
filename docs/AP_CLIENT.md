@@ -1,6 +1,6 @@
 # Metroid Prime 3 Client (T06 connection and location checks, T07 item giving and seed check, T17 goal)
 
-As of 2026-11-25 · Archipelago 0.6.8 · **PAL `RM3P01`** only (SPEC E7) · Dolphin or PrimeHack
+As of 2026-11-25 · Archipelago 0.6.8 · **PAL `RM3P01` and NTSC-U `RM3E01`** · Dolphin or PrimeHack
 
 The client reads game memory through `dolphin-memory-engine`, detects collected locations from the flag block of the
 current world (SPEC E8, E12) and reports them with `LocationChecks`. It gives received items by writing absolute target
@@ -64,15 +64,16 @@ Commands in the client:
 
 ## 3. What happens per poll
 
-1. **Dolphin connection** (`memory.MemoryAccess`): hook, the game ID at `0x80000000` must be `RM3P01`. Otherwise a clear
-   message ("Wrong game in Dolphin: game ID …"), disconnect at once, read nothing but the game ID, write nothing; next
-   attempt after 5 s. The game ID is checked again on every poll and before every write (game switched in a running
-   emulator). Any read/write error counts as a lost connection: disconnect, forget everything session-related, retry
-   after 5 s.
-2. **State** (`game.read_game_state`): ingame ⇔ CPlayer pointer `[[0x805C7570+0x28]+0x2184]` valid **and** vtable
-   `0x80595238` (AP_MEMORY_MAP.md, section 6). In the menu/while loading only these pointers are read; blocks,
-   debouncing, learning mode and item giving are reset. Ingame: world `[0x80680234]+8`, `ItemPercentage` (slot 21),
-   `PowerBeam.capacity` (slot 0, "inventory filled") and the `[0x80680234]` pointer itself (changes on loading).
+1. **Dolphin connection** (`memory.MemoryAccess`). The client hooks the emulator and accepts `RM3P01` or `RM3E01` at
+   `0x80000000`. A different ID produces a "Wrong game in Dolphin" message and disconnects before further memory
+   access. The client checks the ID again on every poll and before every write. A switch between supported IDs also
+   disconnects so the next connection selects the correct address set. After a read or write error, the client clears
+   the session state and retries after 5 s.
+2. **State** (`game.read_game_state`). The verified game ID selects the CStateManager global, CPlayer vtable and
+   GameState pointer from `client.versions`. See [AP_NTSC.md](AP_NTSC.md) for both address sets and the pointer chains.
+   In the menu or while loading, only the state pointers are read. Blocks, debouncing, learning mode and item giving are
+   reset. Ingame the client reads the current world, `ItemPercentage` (slot 21), `PowerBeam.capacity` (slot 0, inventory
+   filled) and the dereferenced GameState pointer (changes on loading).
 3. **Seed check** (section 5): build string of `main.dol` from RAM, compared with seed/slot of the server.
 4. **Flag block** (`flag_block.FlagBlockFinder`, E8): check the remembered address, rescan at once on a mismatch,
    otherwise at most every 2 s if nothing was found. A scan reads MEM1 (24 MiB in 1 MiB chunks, about 90 ms) and finds
@@ -83,7 +84,8 @@ Commands in the client:
    - plausible: all bytes from the list-1 length on are 0.
 
    After reading the 1024 bytes the signature is checked once more (the block might have been freed meanwhile).
-   SAVW ID and list-1 length per world are in `flag_block.SAVW_INFO` (from the PAL ISO, MLVL `+0x14` and SAVW).
+   SAVW ID and list-1 length per world are in `flag_block.SAVW_INFO_BY_GAME_ID` (from each region's MLVL `+0x14`
+   and SAVW). Norion uses 149 relays in PAL and 148 in NTSC-U. Valhalla uses 212 in PAL and 198 in NTSC-U.
 5. **Checks** (`checks`, only with a passed seed check): bytes from `location_flags.py` for the current world; a location
    counts when its byte is set in **2 consecutive polls** (debouncing). AP ID = `0x4D503300 + pickup index`. Each
    location is sent at most once per session; locations the server already reports as checked (`checked_locations`)
@@ -190,7 +192,7 @@ mismatching index triggers `Sync`); the target only depends on the resulting lis
 
 Code: `client/seed_check.py`. The patch tool writes `patcher.seed_id.make_seed_id(seed_name, slot)` (first 16 bytes of
 `SHA-256("metroidprime3-ap\0<seed_name>\0<slot>")`) into bytes 6–22 of the `main.dol` build string
-(`AP_PATCH_TOOL.md` 2.2). On every ingame poll the client reads the 57-byte build string (PAL `0x805843A8`), extracts the
+(`AP_PATCH_TOOL.md` 2.2). On every ingame poll the client reads the build string (PAL `0x805843A8`, NTSC-U `0x805822B0`), extracts the
 ID with `patcher.seed_id.seed_id_from_build_string` (the same function the patch tool uses) and compares it with
 `make_seed_id` of the server's `seed_name` (RoomInfo) and its own slot.
 
@@ -316,6 +318,8 @@ within a save, the copies seen were subsets. Risk: a left-over, still valid bloc
 locations that are not collected in the loaded save. Differences are logged by the learning mode as `blocks_disagree`.
 
 ## 8. Live tests
+
+The T33 NTSC-U smoke tests and RAM observations are recorded in [AP_NTSC.md](AP_NTSC.md).
 
 ### T06 (2026-11-24): connection and location checks
 
@@ -451,7 +455,7 @@ Optionally against a real memory dump (T10, 24 MiB MEM1):
   (T06). If a copy holds a location byte that is not set in the loaded save, the client sends a wrong check. Also open:
   1 h continuous run, Dolphin (not only PrimeHack).
 - **Room** of the player unknown (only the location's room in the learning mode).
-- **PAL `RM3P01` only.** NTSC-U/J are rejected with "Wrong game".
+- NTSC-J `RM3J01` and Trilogy are rejected with "Wrong game".
 - **10 SpecialFunction locations** are only "probable" in the table (T12); the learning mode reports differences.
 - Dolphin accesses run synchronously in the asyncio loop; a scan blocks for about 0.1 s.
 - No tracker/DeathLink part.

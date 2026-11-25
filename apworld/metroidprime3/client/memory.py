@@ -5,7 +5,7 @@ primitives ``_hook``, ``_unhook``, ``_is_hooked``, ``_read`` (and ``_write``): `
 PrimeHack through ``dolphin-memory-engine``, the tests use a fake memory (``test/fake_memory.py``).
 
 Rules:
-- Nothing is read or written before the game ID ``RM3P01`` has been checked (``connect``). On a wrong ID the client
+- Nothing is read or written before the game ID ``RM3P01`` or ``RM3E01`` has been checked (``connect``). On a wrong ID the client
   disconnects at once and writes nothing.
 - Addresses outside MEM1/MEM2 are rejected (``AddressError``) instead of asking Dolphin for them.
 - Any backend error while reading/writing counts as a lost connection (``ConnectionLost``); the caller reconnects.
@@ -17,13 +17,15 @@ import enum
 import struct
 from dataclasses import dataclass
 
+from .versions import VERSIONS, GameVersion
+
 MEM1_START = 0x80000000
 MEM1_SIZE = 0x01800000
 MEM2_START = 0x90000000
 MEM2_SIZE = 0x04000000
 
 GAME_ID_ADDRESS = 0x80000000
-EXPECTED_GAME_ID = b"RM3P01"  # Metroid Prime 3 Wii PAL (SPEC E7)
+GAME_ID_SIZE = 6
 
 SCAN_CHUNK = 0x100000  # 1 MiB per read while scanning (same as the T10 snapshots)
 
@@ -59,14 +61,14 @@ class ConnectResult:
     @property
     def message(self) -> str:
         if self.status is ConnectStatus.CONNECTED:
-            return f"Connected to Dolphin, game {EXPECTED_GAME_ID.decode()} detected."
+            return f"Connected to Dolphin, game {self.game_id.decode()} detected."
         if self.status is ConnectStatus.NO_DOLPHIN:
             return "Dolphin/PrimeHack not found. Please start the emulator."
         if self.status is ConnectStatus.NO_GAME:
             return "Dolphin is running, but no game is being emulated. Please start the patched MP3 ISO."
         shown = self.game_id.decode("ascii", "replace") if self.game_id else "?"
-        return (f"Wrong game in Dolphin: game ID {shown!r}, expected {EXPECTED_GAME_ID.decode()!r} "
-                f"(Metroid Prime 3 PAL). The client reads and writes nothing.")
+        return (f"Wrong game in Dolphin: game ID {shown!r}, expected RM3P01 (PAL) or RM3E01 (NTSC-U). "
+                "The client reads and writes nothing.")
 
 
 def in_ram(address: int, size: int = 1) -> bool:
@@ -77,8 +79,6 @@ def in_ram(address: int, size: int = 1) -> bool:
 
 class MemoryAccess:
     """Wrapped Wii memory. Subclasses only implement the primitives."""
-
-    expected_game_id: bytes = EXPECTED_GAME_ID
 
     def __init__(self) -> None:
         self.verified = False
@@ -104,6 +104,12 @@ class MemoryAccess:
     # ---- connection -------------------------------------------------------------------------------------------- #
 
     @property
+    def version(self) -> GameVersion:
+        if not self.verified:
+            raise NotConnected("game version unavailable without a verified connection")
+        return VERSIONS[self.last_game_id]
+
+    @property
     def connected(self) -> bool:
         if not self.verified:
             return False
@@ -121,19 +127,19 @@ class MemoryAccess:
                 self._hook()
             if not self._is_hooked():
                 return ConnectResult(ConnectStatus.NO_DOLPHIN)
-            game_id = self._read(GAME_ID_ADDRESS, len(self.expected_game_id))
+            game_id = bytes(self._read(GAME_ID_ADDRESS, GAME_ID_SIZE))
         except Exception:  # noqa: BLE001 - dme raises RuntimeError when nothing is emulated
             self._safe_unhook()
             return ConnectResult(ConnectStatus.NO_GAME)
-        self.last_game_id = bytes(game_id)
+        self.last_game_id = game_id
         if not any(game_id):
             self._safe_unhook()
             return ConnectResult(ConnectStatus.NO_GAME)
-        if game_id != self.expected_game_id:
+        if game_id not in VERSIONS:
             self._safe_unhook()
-            return ConnectResult(ConnectStatus.WRONG_GAME, bytes(game_id))
+            return ConnectResult(ConnectStatus.WRONG_GAME, game_id)
         self.verified = True
-        return ConnectResult(ConnectStatus.CONNECTED, bytes(game_id))
+        return ConnectResult(ConnectStatus.CONNECTED, game_id)
 
     def disconnect(self) -> None:
         self.verified = False
@@ -147,9 +153,9 @@ class MemoryAccess:
 
     def check_game_id(self) -> bool:
         """Reads the game ID again (game switched in a running Dolphin). On a mismatch: disconnect, ``False``."""
-        game_id = self.read(GAME_ID_ADDRESS, len(self.expected_game_id))
-        if game_id != self.expected_game_id:
-            self.last_game_id = bytes(game_id)
+        game_id = self.read(GAME_ID_ADDRESS, GAME_ID_SIZE)
+        if game_id != self.last_game_id:
+            self.last_game_id = game_id
             self.disconnect()
             return False
         return True
