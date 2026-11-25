@@ -33,6 +33,7 @@ As of 2026-11-24 · MVP according to SPEC.md E1–E3.
 | T25 | Converter (E22): escape requirement for every pickup node, ANDed onto the location rule (fixes T08 B5 Leviathan cores); simulator + fill check | running | Worker T25 | – |
 | T26 | Client: Leviathan seed warning (enter seed world without exit item, unless the core pickup gives it to this player via LocationScouts) | running (Codex) | Codex T26 | – |
 | T27 | Live: find PAL health/energy address and refill rule so received Energy Tanks are full (T08 B1); docs + read/write probe only, client integration later | running (live) | Worker T27 | – |
+| T28 | Release pipeline (F10/E20): ship or auto-download the patch helper tools (MP3Randomizer, nodtool, wit) with hash check + licenses, player install guide, build script for `.apworld` + tools zip, **draft** pre-release v0.3.0 on `junkx420/Prime3AP` (publishing only after the second playtest) | running (Codex) | Codex T28 | – |
 
 Live tests (T11, T13–T15, T17) need the user at the game: only one at a time.
 
