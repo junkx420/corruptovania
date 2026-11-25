@@ -1,6 +1,7 @@
 """AP patch data (JSON, format in docs/AP_PATCH_TOOL.md) and its translation into MP3Randomizer input.
 
-T05b writes this format in ``generate_output``; :func:`build_patch_data` is the helper for that.
+T05b writes this format in ``generate_output`` (inside an ``.apmp3`` container); :func:`build_patch_data` is the
+helper for that, :func:`load` reads plain JSON and ``.apmp3``.
 """
 
 from __future__ import annotations
@@ -8,6 +9,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,13 @@ from . import layout, seed_id
 
 FORMAT_NAME = "metroidprime3-ap-patch"
 FORMAT_VERSION = 1
+
+# .apmp3 = Archipelago player container (ZIP) written by the World's generate_output (T05b, ``output.py``).
+# CONTAINER_GAME must equal items.GAME_NAME (test); it is repeated here because the patcher must not import the World.
+CONTAINER_FILE_ENDING = ".apmp3"
+CONTAINER_GAME = "Metroid Prime 3: Corruption"
+CONTAINER_MANIFEST = "archipelago.json"
+CONTAINER_MEMBER = "patch_data.json"
 
 # Starter Preset values as Randovania's patch data factory produces them (seed IVG2J7OR, docs/AP_DEV_SETUP.md 4):
 # start G.F.S. Valhalla - Docking Bay 5 (world/area asset IDs), start items Power Beam, Charge Beam, Morph Ball Bombs,
@@ -173,9 +182,40 @@ def from_json(raw: dict[str, Any]) -> PatchData:
     return data
 
 
-def load(path: Path) -> PatchData:
+def read_container(path: Path) -> tuple[PatchData, dict[str, Any]]:
+    """Read an ``.apmp3`` file (Archipelago player container, T05b): patch data and the container manifest.
+
+    The container is a ZIP with Archipelago's ``archipelago.json`` (game, player, player_name, server, ...) and the
+    patch data v1 as :data:`CONTAINER_MEMBER`. Only the standard library is used, Archipelago is not needed.
+    """
     try:
-        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        with zipfile.ZipFile(path) as archive:
+            names = archive.namelist()
+            if CONTAINER_MANIFEST not in names or CONTAINER_MEMBER not in names:
+                raise PatchDataError(f"{path}: not a {CONTAINER_FILE_ENDING} file "
+                                     f"(needs {CONTAINER_MANIFEST} and {CONTAINER_MEMBER})")
+            manifest = json.loads(archive.read(CONTAINER_MANIFEST).decode("utf-8"))
+            raw = json.loads(archive.read(CONTAINER_MEMBER).decode("utf-8"))
+    except zipfile.BadZipFile as error:
+        raise PatchDataError(f"{path}: not a ZIP/{CONTAINER_FILE_ENDING} file: {error}") from error
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise PatchDataError(f"{path}: invalid JSON inside the container: {error}") from error
+    if not isinstance(manifest, dict) or manifest.get("game") != CONTAINER_GAME:
+        game = manifest.get("game") if isinstance(manifest, dict) else None
+        raise PatchDataError(f"{path}: container is for game {game!r}, not {CONTAINER_GAME!r}")
+    data = from_json(raw)
+    if manifest.get("player") != data.slot:
+        raise PatchDataError(f"{path}: manifest player {manifest.get('player')!r} != patch data slot {data.slot}")
+    return data, manifest
+
+
+def load(path: Path) -> PatchData:
+    """Patch data from a JSON file or an ``.apmp3`` container (detected by content, not by the file ending)."""
+    path = Path(path)
+    if zipfile.is_zipfile(path):
+        return read_container(path)[0]
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
         raise PatchDataError(f"{path}: invalid JSON: {error}") from error
     return from_json(raw)

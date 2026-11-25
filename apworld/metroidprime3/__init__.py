@@ -10,26 +10,38 @@ from typing import Any, ClassVar
 
 from BaseClasses import Item
 from worlds.AutoWorld import WebWorld, World
-from worlds.LauncherComponents import Component, Type, components, launch
+from worlds.LauncherComponents import Component, SuffixIdentifier, Type, components, launch
 
 from .data import game as game_data
 from .items import (BASE_ID, FILLER_ITEM_NAME, GAME_NAME, ITEM_OFFSETS, RECORDS, MP3Item, classification,
                     item_name_groups, item_name_to_id, pool_names, starting_names)
 from .locations import LOCATIONS, location_name_groups, location_name_to_id
 from .options import MP3Options
+from .output import write_patch_file
+from .patcher.patch_data import CONTAINER_FILE_ENDING
 from .regions import GOAL_EVENT, create_regions, starting_resources
+from .settings import MP3Settings
 
 SLOT_DATA_VERSION = 1
 
 
 def launch_client(*args: str) -> None:
-    """Launcher-Komponente "Metroid Prime 3 Client" (T06, docs/AP_CLIENT.md)."""
+    """Launcher-Komponente "Metroid Prime 3 Client" (T06, docs/AP_CLIENT.md).
+
+    T05b: Mit einer ``.apmp3`` als Argument (Doppelklick, "Open Patch", Datei aufs Launcher-Fenster ziehen) wird erst
+    das gepatchte ISO gebaut, dann der Client gestartet (``open_patch.py``, docs/AP_APWORLD_DEV.md).
+    """
+    if any(isinstance(arg, str) and arg.lower().endswith(CONTAINER_FILE_ENDING) for arg in args):
+        from .open_patch import patch_and_launch
+        launch(patch_and_launch, name="MetroidPrime3Client", args=args)
+        return
     from .client import launch as client_main
     launch(client_main, name="MetroidPrime3Client", args=args)
 
 
 components.append(Component("Metroid Prime 3 Client", func=launch_client, component_type=Type.CLIENT,
-                            game_name=GAME_NAME, supports_uri=True))
+                            game_name=GAME_NAME, supports_uri=True,
+                            file_identifier=SuffixIdentifier(CONTAINER_FILE_ENDING)))
 
 
 class MP3Web(WebWorld):
@@ -44,6 +56,7 @@ class MP3World(World):
     options_dataclass = MP3Options
     options: MP3Options
     topology_present = True
+    settings: ClassVar[MP3Settings]
 
     item_name_to_id: ClassVar[dict[str, int]] = item_name_to_id
     location_name_to_id: ClassVar[dict[str, int]] = location_name_to_id
@@ -67,6 +80,10 @@ class MP3World(World):
     def set_rules(self) -> None:
         player = self.player
         self.multiworld.completion_condition[player] = lambda state: state.has(GOAL_EVENT, player)
+
+    def generate_output(self, output_directory: str) -> None:
+        """One ``.apmp3`` per MP3 slot (AP patch data v1, docs/AP_PATCH_TOOL.md 2; container: ``output.py``)."""
+        write_patch_file(self.multiworld, self.player, output_directory)
 
     def fill_slot_data(self) -> dict[str, Any]:
         """Everything the client needs to compute the target inventory (E11). Format: docs/AP_APWORLD_DEV.md."""

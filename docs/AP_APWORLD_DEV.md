@@ -1,6 +1,6 @@
-# APWorld „Metroid Prime 3: Corruption“ – Entwicklung (T04)
+# APWorld „Metroid Prime 3: Corruption“ – Entwicklung (T04, Patch-Datei/Packen/Launcher T05b)
 
-Stand: 2026-11-24 · Archipelago **0.6.8** · Python 3.12 · MVP nach SPEC E3 (nur Item-Shuffle, Standard-Startort, Ziel fest)
+Stand: 2026-11-25 · Archipelago **0.6.8** · Python 3.12 · MVP nach SPEC E3 (nur Item-Shuffle, Standard-Startort, Ziel fest)
 
 Die APWorld liegt unter `apworld/metroidprime3/`. Sie liest nur die generierten Daten in `apworld/metroidprime3/data/`
 (T03/T20, siehe `data/README.md`) und importiert nichts aus `randovania` (SPEC 3a, Test `TestNoRandovania`).
@@ -73,8 +73,11 @@ ChecksFinder:
 ```
 
 Ergebnis T04: 10 Solo-Seeds in Folge fehlerfrei (je ~0,4 s Generierung, ~4 s mit Start), 2-Spieler-Seed
-MP3 + ChecksFinder fehlerfrei (124 Items). Die Ausgabe-ZIP enthält im MVP nur Multidata und Spoiler, noch keine
-Patch-Datei (`.apmp3`, kommt mit T05).
+MP3 + ChecksFinder fehlerfrei (124 Items).
+
+Seit T05b enthält die Ausgabe-ZIP je MP3-Slot eine **Patch-Datei** `<Ausgabename>.apmp3` (z. B.
+`AP_38224278823687041413_P2_Samus.apmp3`) neben `.archipelago` und Spoiler. Format: `AP_PATCH_TOOL.md` Abschnitt 2.3.
+Aus ihr baut der Spieler sein ISO (Abschnitt 6).
 
 ## 3. Tests
 
@@ -86,7 +89,9 @@ $env:AP_TEST_WORLDS = "metroidprime3"
 .venv\Scripts\python.exe -m pytest worlds/metroidprime3/test -q
 ```
 
-Stand T04: `test/general` 250 bestanden; eigene Tests 39 bestanden (~6 s).
+Stand T05b: `test/general` 253 bestanden (3 mehr als T04: Archipelagos Manifest-Test läuft, weil es jetzt
+`archipelago.json` gibt); eigene Tests 100 bestanden, 2 übersprungen (brauchen `MP3_PAL_EXTRACTED` bzw.
+`MP3_MEM1_SNAPSHOT`), ~9 s.
 
 Die eigenen Tests (`apworld/metroidprime3/test/`) laufen nur im Archipelago-Klon (sie importieren `test.bases`,
 `BaseClasses`, `Fill`), nicht mit dem pytest des Corruptovania-Repos.
@@ -95,6 +100,7 @@ Die eigenen Tests (`apworld/metroidprime3/test/`) laufen nur im Archipelago-Klon
 |---|---|
 | `test_ids.py` | 99 Locations mit ID = Basis + Pickup-Index, Ort 0 fehlt; Item-IDs gegen festen Schnappschuss; jedes Daten-Item hat eine ID; Pool = 99 Items laut `data/items.py` inkl. Hypermode (48 Missile Expansions); Startitems precollected; `slot_data` JSON-fähig; keine `randovania`-Importe |
 | `test_logic.py` | Regel-Semantik (and/or, „before event“ = erfüllt, Trick = nie, Progressive Beam, Launcher-Sperre, Energy Cells, Schaden); mit allen Items alle 99 Orte und Ziel erreichbar; einziges fehlendes Event ist „Gel Processing Site Out of Bounds“ (nur per Trick, T20); **Knoten-Sperre**: in 70 Inventaren (alle minus je ein Item, 40 zufällige) gilt an jedem erreichbaren gefährlichen Event-Knoten dessen `escape_requirement`; Kontrollwert Green Lock ↔ Grapple Lasso; Abgleich erreichbarer Knoten/Events mit `playthrough_sim.World.reach(logic=True)` für 40 zufällige Inventare |
+| `test_output.py` | `.apmp3` (T05b): Solo-Seed, MP3 + ChecksFinder und MP3 + ChecksFinder + MP3 → genau eine `.apmp3` je MP3-Slot; 99 Orte (1–99), eigene Items = echter Name, fremde (auch vom anderen MP3-Slot) = `Archipelago Item`, Seed-Kennung = `patcher.seed_id.make_seed_id`; gelesen mit dem Patch-Tool und mit `MP3Container`. Patch-Tool: `.apmp3` = gleiche Daten wie JSON, 7 Fehlerfälle, `--dry-run` mit `.apmp3`. Launcher-Helfer (Argumente, Client-Argumente aus dem Manifest, Ausgabepfad, Tools-Ordner), Komponente erkennt `.apmp3`; Settings (Game-ID-Prüfung); `archipelago.json`, `requirements.txt`, Dateiauswahl wie „Build APWorlds“ |
 | `test_playthrough.py` | 20 Solo-Seeds mit Archipelagos Fill (`distribute_items_restrictive` + Progression Balancing); die echte AP-Platzierung geht an `playthrough_sim.play` (eager 0 und 0,5); der logiktreue Spieler gewinnt jeden Seed mit 99/99 Orten |
 
 Gegenprobe (einmalig, nicht als Test): Ohne Knoten-Sperre in den Verbindungen gewinnt derselbe Spieler nur 10 der
@@ -115,6 +121,10 @@ Launcher Munition). Für die Logik egal, weil Expansions keine Progression sind.
 | `rules.py` | Compiler Requirement-Baum → AP-Regel; `StaticState` für die Vorberechnung |
 | `regions.py` | Ein AP-Region je Logik-Knoten, Entrances, Event-Locations, Vorberechnung „mit allen Items erreichbar“ |
 | `options.py` | `MP3Options` = nur Archipelagos Standardoptionen (E3) |
+| `output.py` | `.apmp3`: `MP3Container` (`APPatch`), `displayed_pickups`, `write_patch_file` (T05b) |
+| `settings.py` | `MP3Settings` = Abschnitt `metroidprime3_options` der `host.yaml` (Original-ISO, Tools-Ordner, Ausgabeordner) |
+| `open_patch.py` | Launcher: `.apmp3` → ISO bauen → Client starten (T05b, Abschnitt 6) |
+| `archipelago.json`, `requirements.txt` | Manifest und Abhängigkeit für die gepackte `.apworld` (Abschnitt 7) |
 
 **IDs.** `BASE_ID = 0x4D503300` (= „MP3\0“ in ASCII, 1297101568).
 - Location-ID = `BASE_ID + Pickup-Index` (1–99). Ort 0 (`UNPATCHED_LOCATION`) ist weder Location noch Event (E13, E17).
@@ -187,10 +197,89 @@ Alles, was der Client für den Soll-Zustand braucht (E11: Soll = Startitems + Wi
 
 Ressourcen → Inventar-Slot (Spielspeicher) ist Sache des Clients (T07, `docs/AP_MEMORY_MAP.md`).
 
-## 6. Offen
+## 6. Patch-Datei öffnen: Launcher (T05b)
 
-- Kein `archipelago.json`-Manifest (Archipelagos Manifest-Test ist ohne Datei übersprungen; erst für das Release-Paket).
-- Keine Patch-Ausgabe (`generate_output`) – T05.
+Die Launcher-Komponente **„Metroid Prime 3 Client“** (T06) erkennt jetzt `.apmp3` (`file_identifier`). Ohne
+`.apmp3` startet sie wie bisher nur den Client.
+
+Wege, eine `.apmp3` zu öffnen:
+
+- Doppelklick auf die `.apmp3`, wenn die Endung mit dem Archipelago-Launcher verknüpft ist (beim installierten
+  Archipelago über „Öffnen mit“ → `ArchipelagoLauncher.exe`),
+- im Launcher **„Open Patch“** und die Datei wählen, oder die Datei auf das Launcher-Fenster ziehen,
+- Kommandozeile: `.venv\Scripts\python.exe Launcher.py <datei.apmp3>` (Client-Argumente nach `--`, z. B. `-- --nogui`).
+
+Ablauf (`open_patch.patch_and_launch`; bei offenem Launcher-Fenster in einem eigenen Prozess):
+
+1. `.apmp3` lesen (`patcher.patch_data.read_container`). Fehler → Meldungsfenster, kein Client.
+2. Original-ISO aus der `host.yaml`, `metroidprime3_options.iso_file`. Fehlt die Datei, öffnet sich ein Dateidialog
+   („Metroid Prime 3: Corruption ISO (Wii PAL RM3P01, unmodified)“); der gewählte Pfad wird sofort in der `host.yaml`
+   gespeichert. Geprüft werden nur die ersten 6 Byte (Game-ID `RM3P01`; `RM3E01`/`RM3J01` mit Warnung des Patch-Tools),
+   kein Hash: der würde bei jedem Zugriff auf die Einstellung 4,7 GB lesen.
+3. Ziel-ISO `<Name der .apmp3>.iso` neben der `.apmp3` (oder in `output_folder`). Trägt ein vorhandenes ISO dort schon
+   die Seed-Kennung dieses Slots, wird nicht neu gepatcht (zweiter Doppelklick startet sofort den Client).
+4. Patch-Tool (`patcher.build.patch_iso`, ~40 s). Fortschritt im Log `logs\MetroidPrime3Patch_<Zeit>.txt`; während des
+   Patchens ist kein Fenster offen.
+5. Metroid Prime 3 Client starten, mit `--connect <server>` (nur wenn die `.apmp3` einen Server enthält, also von der
+   WebHost kommt) und `--name <Spielername>`; selbst übergebene Argumente haben Vorrang.
+
+`host.yaml`-Abschnitt (legt Archipelago beim ersten Laden der World an):
+
+```yaml
+metroidprime3_options:
+  iso_file: "C:\\...\\mp3.iso"   # Original-ISO, wird beim ersten .apmp3 abgefragt
+  tools_folder: ""              # Ordner mit MP3Randomizer.exe usw.; leer/ohne EXE: $MP3AP_TOOLS_DIR, sonst Repo
+  output_folder: ""             # leer: ISO neben die .apmp3
+```
+
+**Geprüft (T05b, Kommandozeile):** `Launcher.py ..\out\AP_38224278823687041413_P2_Samus.apmp3 -- --nogui` mit gesetztem
+`iso_file`: ISO gebaut (Seed-Kennung zurückgelesen), danach Client gestartet, mit dem laufenden PrimeHack verbunden
+(„Spiel RM3P01 erkannt“). Zweiter Aufruf: „already has seed ID …, not patching again“, Client startet sofort. Kaputte
+`.apmp3` → Fehlermeldung, kein Client. **Manuell zu prüfen (GUI):** Dateidialog beim ersten Mal, „Open Patch“, Ziehen
+aufs Fenster, Doppelklick mit Dateizuordnung.
+
+## 7. Gepackte `.apworld`
+
+Dateien: `archipelago.json` (Manifest: `game`, `minimum_ap_version` 0.6.8, `world_version` 0.1.0) und
+`requirements.txt` (`dolphin-memory-engine>=1.3.0`, wie T06; in der venv ist 1.3.1 installiert).
+
+Packen mit Archipelagos Launcher-Komponente „Build APWorlds“ (nur im Quellcode-Archipelago):
+
+```powershell
+.venv\Scripts\python.exe Launcher.py "Build APWorlds" -- "Metroid Prime 3: Corruption" --skip_open_folder
+```
+
+Ergebnis `build\apworlds\metroidprime3.apworld` (181 KB, 41 Dateien, entpackt 3,2 MB). Die Komponente nimmt alle
+Dateien des Ordners außer `__pycache__`, `*.iso` usw. (`data/GLOBAL.apignore`), schreibt das Manifest samt
+`compatible_version`/`version` dazu und folgt der Junction. `test/` ist mit drin (stört nicht).
+
+Installieren: `.apworld` nach `custom_worlds\` (oder Launcher „Install APWorld“). Im Entwicklungs-Klon vorher die
+Junction umbenennen, sonst gewinnt der Ordner („already loaded“): `cmd /c rename worlds\metroidprime3 _metroidprime3_dev`
+(Ordner mit `_` lädt Archipelago nicht), zurück mit `cmd /c rename worlds\_metroidprime3_dev metroidprime3`.
+
+**Geprüft (T05b):** Mit umbenannter Junction und `custom_worlds\metroidprime3.apworld` lädt Archipelago 0.6.8 die World
+aus der ZIP (`zip_path` gesetzt, `v0.1.0` in der Generator-Ausgabe); `Generate.py` mit MP3 + ChecksFinder erzeugt
+fehlerfrei einen Seed, die Ausgabe-ZIP enthält `AP_…_P2_Samus.apmp3`.
+
+**Ladezeit** (`python -X importtime`, je 3 Läufe, Python 3.12, alle Worlds geladen):
+
+| Quelle | `data/logic.py` (2,9 MB) | `import worlds` gesamt |
+|---|---|---|
+| Ordner (Junction, `.pyc` vorhanden) | 0,12–0,13 s | 3,6–3,7 s |
+| gepackte `.apworld` (kein `.pyc`, wird bei jedem Start kompiliert) | 0,25 s (davon `compile` 0,12 s) | 3,7–3,8 s |
+
+Die Befürchtung aus T04 (3–5 s) trifft nicht zu: Das Kompilieren der reinen Datenliterale kostet ~0,12 s je Start, die
+Gesamtzeit bestimmen die anderen Worlds. Kein Handlungsbedarf (kein `.pyc` in die ZIP nötig).
+
+**Abhängigkeit:** Archipelago 0.6.8 installiert die `requirements.txt` einer gepackten `.apworld` nicht selbst
+(`ModuleUpdate.py` liest nur `requirements.txt` von World-Ordnern). `dolphin-memory-engine` ist trotzdem vorhanden: im
+installierten Archipelago über die mitgelieferte Wind-Waker-World, im Quellcode-Archipelago über `ModuleUpdate.py --yes`.
+Die Hilfsprogramme des Patch-Tools liegen **nicht** in der `.apworld` (`AP_PATCH_TOOL.md` 6.2): `tools_folder` setzen
+oder einen Corruptovania-Checkout nutzen.
+
+## 8. Offen
+
 - Tricks als Option (F9). Schadensnäherung (volle Energie je Requirement) bleibt optimistisch (T03).
-- Import der 2,9 MB großen `data/logic.py` dauert beim ersten Mal ~3–5 s (danach `.pyc`). In einer gepackten
-  `.apworld` (ZIP) wird kein `.pyc` geschrieben; dort ggf. später prüfen.
+- Patch-Hilfsprogramme (MP3Randomizer, nodtool, wit) mit dem Release ausliefern oder herunterladen (F10/E20).
+- Während des Patchens (~40 s) zeigt der Launcher nichts an (nur Log); ein Fortschrittsfenster fehlt.
+- GUI-Weg (Dateidialog, „Open Patch“, Doppelklick) nur beschrieben, nicht von mir geklickt.

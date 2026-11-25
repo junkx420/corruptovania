@@ -1,4 +1,4 @@
-"""Command line: ``python -m worlds.metroidprime3.patcher --patch <file.json> --iso <original.iso> --out <target.iso>``."""
+"""Command line: ``python -m worlds.metroidprime3.patcher --patch <x.apmp3|x.json> --iso <orig.iso> --out <x.iso>``."""
 
 from __future__ import annotations
 
@@ -15,7 +15,8 @@ def _parser() -> argparse.ArgumentParser:
         prog="python -m worlds.metroidprime3.patcher",
         description="Metroid Prime 3 (PAL RM3P01) Archipelago patch tool: AP patch data + original ISO -> patched ISO.",
     )
-    parser.add_argument("--patch", type=Path, help="AP patch data (JSON, docs/AP_PATCH_TOOL.md)")
+    parser.add_argument("--patch", type=Path,
+                        help="AP patch data: .apmp3 from Archipelago or JSON (docs/AP_PATCH_TOOL.md)")
     parser.add_argument("--iso", type=Path, help="original, unmodified ISO (RM3P01)")
     parser.add_argument("--out", type=Path, help="patched ISO to write (overwritten if it exists)")
     parser.add_argument("--tools", type=Path, default=None, help=f"helper folder (default: ${build.TOOLS_ENV} or the "

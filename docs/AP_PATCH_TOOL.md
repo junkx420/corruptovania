@@ -1,10 +1,11 @@
-# AP-Patch-Tool: AP-Patchdaten + Original-ISO → gepatchtes ISO (T05a)
+# AP-Patch-Tool: AP-Patchdaten + Original-ISO → gepatchtes ISO (T05a, `.apmp3` T05b)
 
-Stand: 2026-11-24. Code: `apworld/metroidprime3/patcher/`, Tests: `apworld/metroidprime3/test/test_patcher.py`.
+Stand: 2026-11-25. Code: `apworld/metroidprime3/patcher/`, Tests: `apworld/metroidprime3/test/test_patcher.py`.
 Grundlage: `AP_PATCHER_CHANGES.md` (T16, `--ap-mode`, APItem), `AP_PATCHER_NOTES.md` (T09), `AP_DEV_SETUP.md` (T01).
 
 > **Kurzfassung**
-> - Eingabe: eine JSON-Datei „AP-Patchdaten“ (Abschnitt 2) und das unveränderte PAL-ISO `RM3P01`.
+> - Eingabe: die Patch-Datei `.apmp3` aus Archipelago (T05b, Abschnitt 2.3) **oder** eine JSON-Datei „AP-Patchdaten“
+>   (Abschnitt 2) und das unveränderte PAL-ISO `RM3P01`.
 > - Ablauf wie der Corruptovania-Exporter (entpacken, Attract-Videos ersetzen, Paks patchen, ISO bauen), aber
 >   MP3Randomizer läuft **immer mit `--ap-mode`**, **ohne** MP3Update/Deflicker (E7), und die **Seed-Kennung** wird in
 >   die Build-Info der `main.dol` geschrieben (T18 Teil 1).
@@ -17,8 +18,12 @@ Grundlage: `AP_PATCHER_CHANGES.md` (T16, `--ap-mode`, APItem), `AP_PATCHER_NOTES
 Im Archipelago-Klon (APWorld per Junction eingebunden, `AP_APWORLD_DEV.md` Abschnitt 1):
 
 ```powershell
+.venv\Scripts\python.exe -m worlds.metroidprime3.patcher --patch <datei.apmp3> --iso <original.iso> --out <ziel.iso>
 .venv\Scripts\python.exe -m worlds.metroidprime3.patcher --patch <datei.json> --iso <original.iso> --out <ziel.iso>
 ```
+
+Ob `.apmp3` oder JSON, erkennt das Tool am Inhalt (ZIP oder nicht), nicht an der Endung. Bequemer für Spieler: die
+`.apmp3` im Archipelago-Launcher öffnen (`AP_APWORLD_DEV.md` Abschnitt 6); der Launcher ruft genau dieses Tool auf.
 
 Ohne Archipelago (beliebiges Python ≥ 3.10, z. B. die Repo-venv), aus der Repo-Wurzel:
 
@@ -31,7 +36,7 @@ geladen würde, das Archipelago braucht. Der Ordner-Aufruf lädt nur das Paket `
 
 | Option | Bedeutung |
 |---|---|
-| `--patch` | AP-Patchdaten (JSON, Abschnitt 2) |
+| `--patch` | `.apmp3` (Abschnitt 2.3) oder AP-Patchdaten als JSON (Abschnitt 2) |
 | `--iso` | Original-ISO, unverändert (`RM3P01`; `RM3E01`/`RM3J01` gehen mit Warnung, ungetestet) |
 | `--out` | Ziel-ISO (wird überschrieben). Darf nicht das Eingabe-ISO sein |
 | `--tools` | Ordner mit den Hilfsprogrammen (Standard: `$MP3AP_TOOLS_DIR`, sonst `randovania/data/gollop_mp3_patcher` dieses Repos) |
@@ -63,14 +68,15 @@ Aus Python (z. B. für einen späteren Launcher-Eintrag):
 
 ```python
 from worlds.metroidprime3.patcher import build, patch_data
-data = patch_data.load("x.json")
+data = patch_data.load("x.apmp3")        # oder "x.json"; read_container() liefert zusätzlich das Manifest
 build.patch_iso(data, iso, out)          # -> PatchResult(output, game_id, dol_version, seed_id, layout)
 ```
 
 ## 2. Format „AP-Patchdaten“ (Version 1)
 
-Eine JSON-Datei je MP3-Slot. T05b erzeugt sie in `generate_output` mit
-`patcher.patch_data.build_patch_data(seed_name, slot, player_name, pickups)` und `patch_data.dump(data, path)`.
+Ein Datensatz je MP3-Slot. `generate_output` (T05b, `output.py`) erzeugt ihn mit
+`patcher.patch_data.build_patch_data(seed_name, slot, player_name, pickups)` und legt ihn als `patch_data.json` in die
+`.apmp3` (Abschnitt 2.3). Als lose JSON-Datei (`patch_data.dump(data, path)`) geht er weiterhin.
 
 ```json
 {
@@ -140,6 +146,11 @@ MP3Randomizer.exe --input-path <paks>\ --output-path <DATA\files>\ --layout <see
 
 ### 2.2 Seed-Kennung (T18)
 
+Es gibt genau **eine** Funktion dafür: `patcher.seed_id.make_seed_id`. Patch-Tool (`validate`), `generate_output`
+(über `build_patch_data`) und später der Client (T18 Teil 2) rufen sie auf; ein Test prüft, dass die Kennung in jeder
+erzeugten `.apmp3` gleich `make_seed_id(seed_name, slot)` ist.
+
+
 - Wert: `make_seed_id(seed_name, slot)` = die ersten 16 Byte von `SHA-256("metroidprime3-ap\0<seed_name>\0<slot>")`.
   Deterministisch, damit der Client sie aus `seed_name` (RoomInfo) und seinem Slot nachrechnen kann, ohne `slot_data`.
 - Ort: Build-String der `main.dol`, Bytes 6–22 (im Original `roidBuildInfo!#$`), wie die Layout-UUID bei Randovania
@@ -167,6 +178,32 @@ ok = found == seed_id.make_seed_id(room_seed_name, my_slot)
   `seed_id_from_build_string` wirft `ValueError`, wenn die Bytes gar nicht der Build-String dieser Version sind.
   Aus Dateien: `seed_id.read_seed_id(dol_bytes)`, `read_seed_id_from_dol_file(path)`, `build.read_seed_id_from_iso(iso)`
   (holt nur `sys/main.dol` per `wit EXTRACT --files +sys/main.dol`).
+
+### 2.3 Patch-Datei `.apmp3` (T05b)
+
+ZIP-Datei (Archipelago-`APPatch`, Klasse `output.MP3Container`), Name `<Ausgabename>.apmp3`, z. B.
+`AP_38224278823687041413_P2_Samus.apmp3`, eine je MP3-Slot in der Ausgabe-ZIP von `Generate.py`.
+
+| Datei im ZIP | Inhalt |
+|---|---|
+| `archipelago.json` | Manifest von Archipelago: `game` = `Metroid Prime 3: Corruption`, `player` (Slot), `player_name`, `server` (leer; die WebHost trägt beim Download ihre Adresse ein), `patch_file_ending` = `.apmp3`, `procedure` = `custom`, `compatible_version` 6, `version` 7 |
+| `patch_data.json` | AP-Patchdaten v1 (Abschnitt 2), mit `seed_id` |
+
+Das Tool liest die `.apmp3` nur mit der Standardbibliothek (`patch_data.read_container`) und lehnt sie ab, wenn
+`game` nicht MP3 ist, `player` nicht zum `slot` passt, eine der beiden Dateien fehlt oder die Patchdaten ungültig sind.
+Inhalt der Pickups (SPEC E14): eigenes Item am eigenen Ort → echter Itemname; Item einer anderen Welt (auch eines
+anderen MP3-Slots oder einer Item-Link-Gruppe) → `Archipelago Item`. Ein eigenes Item, das der Patcher nicht zeigen
+kann (nur per Plando eines Startitems wie Power Beam denkbar), wird mit Warnung ebenfalls `Archipelago Item`.
+
+**Warum `APPatch` und nicht `APProcedurePatch`:** `APProcedurePatch` wendet Byte-Prozeduren im Speicher auf die
+Quelldatei an (`get_source_data` liest sie ganz ein). Für ein 4,7-GB-ISO mit externen Werkzeugen (nodtool,
+MP3Randomizer, wit) passt das nicht. `APPatch` ist ein `APPlayerContainer` mit `procedure: "custom"` (wie die
+`.aptww` von The Wind Waker): Archipelago kennt Spieler und Endung, angewendet wird mit unserem Tool.
+
+**Beispiel (Abnahme T05b):** 2-Spieler-Seed MP3 (Slot 2) + ChecksFinder, Seed `38224278823687041413`:
+79 eigene, 20 fremde Pickups. `--patch AP_38224278823687041413_P2_Samus.apmp3 --iso ..\mp3.iso --out ..\out\t05b_duo.iso`
+→ fertig nach 40 s, Game-ID `RM3P01`, Seed-Kennung `7f5dd9550100c7beb4f4c5ac21f184c7` aus dem ISO zurückgelesen
+(`--read-seed-id` bestätigt). Gespielt wird das ISO in T07/T08.
 
 ## 3. Voraussetzungen
 
@@ -227,10 +264,10 @@ Siehe `STATUS.md` T05a. Details:
 
 1. **Nur Windows.** macOS/Linux bräuchten die Hilfsprogramme des Exporters für diese Plattformen (Randovanias
    macOS-Toolchain liegt nicht im Repo) und einen Linux-Build von MP3Randomizer.
-2. **Hilfsprogramme kommen aus dem Repo** (`randovania/data/gollop_mp3_patcher`). Für eine verteilbare `.apworld` (T05b /
-   Release, F10) müssen sie mitgeliefert oder heruntergeladen werden (`--tools`/`MP3AP_TOOLS_DIR` sind dafür vorbereitet).
-3. **Kein Launcher-Eintrag / keine `.apmp3`-Datei**: Das Tool liest JSON; Einpacken in eine AP-Patch-Datei und Aufruf aus
-   dem AP-Launcher macht T05b.
+2. **Hilfsprogramme kommen aus dem Repo** (`randovania/data/gollop_mp3_patcher`). Die gepackte `.apworld` enthält sie
+   nicht. Für das Release (F10) müssen sie mitgeliefert oder heruntergeladen werden; bis dahin `--tools`,
+   `MP3AP_TOOLS_DIR` oder im Launcher `metroidprime3_options.tools_folder` in der `host.yaml`.
+3. ~~Kein Launcher-Eintrag / keine `.apmp3`~~: erledigt in T05b (Abschnitt 2.3, `AP_APWORLD_DEV.md` Abschnitt 6).
 4. **Texte**: fremde Pickups zeigen alle „Archipelago-Item“ (E14); Spieler-/Itemname je Ort fehlt (nach dem MVP).
    Nur Englisch (wie alle Patcher-Texte).
 5. **Nur PAL getestet.** NTSC-U/J werden mit Warnung akzeptiert, Adressen nur aus open-prime-rando.
