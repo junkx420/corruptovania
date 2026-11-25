@@ -109,6 +109,7 @@ class MP3Context(CommonContext):
         self.seed_check = SeedCheck()
         self.giver = ItemGiver(memory, logger)
         self.goal = GoalDetector()
+        self.goal_detected = False  # end sequence seen in this client session (T17)
         self.slot_data: dict[str, Any] = {}
         self._announced = 0  # this many entries of items_received have been announced
         self._announced_identity: tuple | None = None
@@ -287,14 +288,30 @@ class MP3Context(CommonContext):
                          f"current {current[0]}/{current[1]} - {note}")
         return lines
 
-    async def check_goal(self, state: GameState) -> None:
-        """Goal (T17 open, ``goal.GoalDetector``): send ``CLIENT_GOAL`` the first time it is detected."""
-        if self.finished_game or not self.goal.available or not self.server_connected:
+    def observe_goal(self, state: GameState) -> bool:
+        """Goal detection (T17, ``goal.GoalDetector``), one poll. Returns True while the end sequence runs.
+
+        Only with a valid seed ID. Every confirmed start of the end sequence is logged; the goal itself is reported
+        by ``send_goal``.
+        """
+        if not self.goal.available or not self.seed_check.result.ok:
+            self.goal.reset()
+            return False
+        was_confirmed = self.goal.confirmed
+        seen = self.goal.observe(self.memory, state)
+        if self.goal.confirmed and not was_confirmed:
+            self.goal_detected = True
+            logger.info(f"Goal reached: {self.goal.goal_event} (end sequence on Phaaze detected). "
+                        f"Item giving paused while it runs.")
+        return seen
+
+    async def send_goal(self) -> None:
+        """Send ``CLIENT_GOAL`` once per server connection (also if the goal was detected while offline)."""
+        if not self.goal_detected or self.finished_game or not self.server_connected:
             return
-        if self.goal.reached(self.memory, state):
-            self.finished_game = True
-            logger.info(f"Goal reached: {self.goal.goal_event}")
-            await self.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
+        self.finished_game = True
+        logger.info("Goal sent to the server (CLIENT_GOAL).")
+        await self.send_msgs([{"cmd": "StatusUpdate", "status": ClientStatus.CLIENT_GOAL}])
 
     # ---- Dolphin loop ------------------------------------------------------------------------------------------ #
 
@@ -317,6 +334,8 @@ class MP3Context(CommonContext):
         lines.append(f"Locations detected: {len(self.locations_checked)}, items received: {len(self.items_received)}, "
                      f"inventory writes: {self.giver.writes_total}, "
                      f"learning mode {'on' if self.learning.enabled else 'off'}")
+        goal = "sent" if self.finished_game else ("detected, not sent yet" if self.goal_detected else "not reached")
+        lines.append(f"Goal ({self.goal.goal_event}): {goal}, end sequence seen {self.goal.detections} time(s)")
         return "\n".join(lines)
 
     def _leave_game(self) -> None:
@@ -325,6 +344,7 @@ class MP3Context(CommonContext):
         self.detector.reset_pending()
         self.learning.reset()
         self.giver.reset()
+        self.goal.reset()
         self.current_world = None
         self._was_ingame = False
 
@@ -349,6 +369,7 @@ class MP3Context(CommonContext):
                 return RECONNECT_DELAY
             state = read_game_state(self.memory)
             self.game_state = state
+            await self.send_goal()  # goal detected while offline: report as soon as the server is back
             if not state.ingame:
                 if self._was_ingame:
                     logger.info(f"No longer ingame ({state.reason}), pausing.")
@@ -365,9 +386,12 @@ class MP3Context(CommonContext):
                 self.detector.reset_pending()
             seed = self.update_seed_check()
             await self.poll_checks(state, seed.ok)
-            await self.give_items(state)
-            if seed.ok:
-                await self.check_goal(state)
+            if self.observe_goal(state):
+                # end sequence: the game strips suit and grapples on purpose, do not give them back (T17)
+                self.giver.reset()
+            else:
+                await self.give_items(state)
+            await self.send_goal()
             return self.poll_interval
         except ConnectionLost as exc:
             self.memory.disconnect()

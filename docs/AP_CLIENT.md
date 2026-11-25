@@ -1,4 +1,4 @@
-# Metroid Prime 3 Client (T06 connection and location checks, T07 item giving and seed check)
+# Metroid Prime 3 Client (T06 connection and location checks, T07 item giving and seed check, T17 goal)
 
 As of 2026-11-25 · Archipelago 0.6.8 · **PAL `RM3P01`** only (SPEC E7) · Dolphin or PrimeHack
 
@@ -7,8 +7,8 @@ current world (SPEC E8, E12) and reports them with `LocationChecks`. It gives re
 values into the inventory (SPEC E9, E11) and only does either of these when the seed ID in the running ISO belongs to
 the connected slot (T18 part 2).
 
-Code: `apworld/metroidprime3/client/`, tests: `apworld/metroidprime3/test/test_client.py` (T06) and
-`test_client_items.py` (T07).
+Code: `apworld/metroidprime3/client/`, tests: `apworld/metroidprime3/test/test_client.py` (T06),
+`test_client_items.py` (T07) and `test_client_goal.py` (T17).
 
 ## 1. Start
 
@@ -89,8 +89,8 @@ Commands in the client:
    are not sent, and only locations the server knows (`server_locations`) are sent. Locations of earlier worlds are in
    the save and are seen again on the next visit, but not sent twice.
 6. **Learning mode** (section 7), independent of the seed check.
-7. **Item giving** (section 4, only with a server connection and a passed seed check).
-8. **Goal** (section 6, open).
+7. **Goal** (section 6): end sequence after Aurora Unit 313 detected → no item giving in this poll, `CLIENT_GOAL` once.
+8. **Item giving** (section 4, only with a server connection and a passed seed check).
 
 ## 4. Item giving (T07, SPEC E9, E11)
 
@@ -211,13 +211,37 @@ Details:
   and resets the item giver.
 - Status changes are logged once (errors as `ERROR`); `/seed` shows the current status.
 
-## 6. Goal (open, T17)
+## 6. Goal (T17, measured in T08)
 
-`client/goal.py` is the prepared interface: `GoalDetector.reached(memory, state)` is called on every ingame poll with a
-passed seed check; on the first `True` the client sends `StatusUpdate` with `CLIENT_GOAL`. How the victory over
-"Aurora Unit 313" (`slot_data["goal_event"]`) shows up in memory is **not measured** (T17). Phaaze has no locations and no
-flag block in `location_flags.py`, so detecting it without T17 would be a guess. Until then `available = False` and the
-client never reports the goal.
+Code: `client/goal.py`, wiring in `context.py` (`observe_goal`, `send_goal`), tests `test/test_client_goal.py`.
+Measurement and runs: `docs/AP_PLAYTEST_T08.md`, section "Goal detection".
+
+**Condition** (the victory over "Aurora Unit 313", `slot_data["goal_event"]`): ingame, world **Phaaze**
+(`0x4B07619AB6125B33`), inventory filled, **slot 41 HyperModePhaaze = 0/1**, in 2 consecutive polls.
+
+Why: on Phaaze the game sets slot 41 from 0/0 to 1/1 about a minute after landing and keeps it through the final
+battle. When the end cutscene after the victory starts, it sets slot 41 to 0/1 (in the same frame suit amount 5 → 0
+and Grapple Lasso/Swing/Voltage amount 1 → 0). World and CPlayer stay valid through the end cutscene and the credits, so
+the normal ingame poll sees it. The Phaaze flag block, the world ID and slots 40/42/46 do not change. The client never
+writes slots 40–42 (`inventory.READ_ONLY_SLOTS`).
+
+Behaviour:
+
+- Only with a passed seed check (`OK`).
+- As soon as the condition is seen (first poll), the client **gives no items** while it holds: the game strips suit
+  and grapples on purpose in the end sequence (T08 finding B11: v0.2.0 wrote them back).
+- On confirmation: log `Goal reached: Aurora Unit 313 (end sequence on Phaaze detected). …`, then
+  `StatusUpdate` `CLIENT_GOAL` once per server connection (`Goal sent to the server (CLIENT_GOAL).`). Detected while
+  offline: sent as soon as the server is connected again. CommonClient resends it itself after a reconnect
+  (`finished_game`).
+- Every new start of the end sequence (e.g. after reloading before the final battle) is logged again; `/dolphin` shows
+  `Goal (Aurora Unit 313): sent|detected, not sent yet|not reached, end sequence seen N time(s)`.
+
+Live (T08, client v0.2.1): detected and reported at 16:07:27 and 16:16:04 (both after loading a savestate before the
+final battle, the second with a freshly started client); the server marked Samus as finished. Timing: about one minute
+after the boss dies (start of the end cutscene), not at the moment of the kill.
+
+Not measured: slot 41 after loading a save made on Phaaze.
 
 ## 7. Learning mode (E19)
 
@@ -313,11 +337,31 @@ the repo). Memory was additionally read with a separate read-only script.
 The user had saved once more in step 02:52 (with the items); that is why the ISO of the other seed showed items from
 the save. The client wrote nothing there.
 
+### T08 (2026-11-25): 2-player playthrough MP3 + ChecksFinder to the goal
+
+Installed Archipelago 0.6.8, `.apworld` v0.2.0 → 0.2.1, seed `61579369889909122189`, ISO via "Open Patch", client from
+the launcher, PrimeHack 1.0.9 (Clock Override off). Full course, checkpoints and findings: `docs/AP_PLAYTEST_T08.md`.
+
+| Topic | Result |
+|---|---|
+| locations | 53 collected live, each exactly once at the server (also after savestates, death/continue, client/server/Dolphin restarts); 99/99 at the end (2 released by the worker, 44 auto-released after the goal) |
+| items | both directions; ChecksFinder items (Progressive Beam, Grapple Lasso, Grapple Voltage, Spider Ball, Energy Tank) written at once; Progressive Beam/Missile both stages; Missile Launcher booked 4 locked expansions over; whole pool in game without exceeding a limit |
+| Energy Cells | cells 1 and 9 inserted on Valhalla, not given back |
+| ship | Ship Missile / Ship Grapple work in game; ship missile consumption not refilled by the client |
+| Hypermode | Hypermode until corruption → Game Over → continue: slots 35–37 untouched, no write needed |
+| savestates | Dolphin savestates reset RAM without a loading phase; the client restores the target at once. Fast savestate flipping produces read-back warnings ("Changed by the game") and a short throttle, then the final state is written once |
+| learning mode | 53 locations confirmed, no difference to `location_flags.py`; SpecialFunction 42, 43, 62, 89 confirmed live |
+| goal | section 6; client bug B11 (items given back in the end sequence) fixed in v0.2.1 |
+
+Findings outside the client (documented only): softlock in the Bryyo Leviathan Core without Hyper Ball (logic, all
+three Leviathan cores have a one-way exit), game crash after an out-of-order Elysia bomb sequence (T21), ship upgrade
+in the Hangar Bay greyed out while the ship still held an object with the Ship Grapple.
+
 ## 9. Tests
 
 ```powershell
 $env:AP_TEST_WORLDS = "metroidprime3"
-.venv\Scripts\python.exe -m pytest worlds/metroidprime3/test/test_client.py worlds/metroidprime3/test/test_client_items.py -q
+.venv\Scripts\python.exe -m pytest worlds/metroidprime3/test/test_client.py worlds/metroidprime3/test/test_client_items.py worlds/metroidprime3/test/test_client_goal.py -q
 ```
 
 Fake memory: `test/fake_memory.py` (MEM1 as a `bytearray`, counts accesses, creates state pointers, blocks, the starting
@@ -345,24 +389,37 @@ connection, learning mode.
   ISO works), seed switch forgets confirmed checks, server offline gives nothing, read-back throttling (no write loop,
   given up after 5 failures, retried after loading), consumption is no failure, `/inventory`.
 
+`test_client_goal.py` (T17): the condition on the measured Phaaze course (0/0 → 1/1 → 0/1), other worlds/values, menu
+and empty inventory, two consecutive polls, slot 41 never written; whole client: `CLIENT_GOAL` exactly once and no write
+in the end sequence (suit/grapples stay as the game set them), repeat after reloading before the final battle (logged
+again, sent once), wrong seed → nothing, detected offline → sent after reconnecting, no goal without the end sequence.
+
 Optionally against a real memory dump (T10, 24 MiB MEM1):
 `$env:MP3_MEM1_SNAPSHOT = "<path>\D2_mem1.bin"` – expects Norion `0x80A13AA0` (locations 3, 4), Valhalla `0x80A49CC0`
 (location 11), 14 worlds, the rejected PHC block.
 
 ## 10. Known gaps
 
-- **Goal** not detected (T17 open, section 6): the client never sends `CLIENT_GOAL`.
+- **Goal** (section 6): detected about one minute after the final boss dies (start of the end cutscene), not at the
+  kill itself; slot 41 after loading a save made on Phaaze not measured.
+- **Received Energy Tanks are empty:** the client raises the tank count, but the current energy (health) is not
+  refilled (address unknown, `AP_PLAYTEST_T08.md` B1). Saving at the ship or energy pickups fill them.
+- **No warning before the Leviathan cores:** entering a Leviathan seed without its exit item (Bryyo: Hyper Ball,
+  Elysia: Hyper Missile + missiles, Pirate Homeworld: Hyper Grapple + Grapple Voltage) softlocks after the boss when the
+  core pickup is something else (logic gap, `AP_PLAYTEST_T08.md` B5). A warning in the client window is planned.
+- **Savestates:** a Dolphin savestate changes RAM without a loading phase, so the "settle 2 polls" rule does not apply
+  and the learning mode may log a false "pickup" (ItemPercentage jump). Harmless (absolute targets).
 - **Death state** not readable; writes during the death animation are possible (harmless, the save overwrites them).
   The pause menu is not detected either; writes can happen while paused.
 - **Items only with a server connection.** Offline the client gives nothing (locations are still noted, section 5).
-- **Ship Grapple/Ship Missile** (44/45) effect in game not verified (ship not usable early, T11); locked Ship Missile
-  Expansions have no place in the game (slot 69 is not saved), the client books them as soon as the Ship Missile is
-  there.
-- **Suit:** story suits (PED/Phazon, T15 open) and their indices are unknown. The client leaves amounts 5–7 alone and
-  only raises lower values to 5; whether amount 6 or 7 freezes is not tested.
-- **Hypermode:** slot 36 is set with every hyper item; the interplay with the story hypermode and corruption in Bryyo,
-  slots 40–42 and Phaaze is not tested (T15). Slots 40–42 are never written.
-- **Energy cells:** inserting is only tested for cell 1 at the Docking Bay 5 terminal (T15, T07).
+- **Ship Grapple/Ship Missile** (44/45) work in game (T08). Locked Ship Missile Expansions have no place in the game
+  (slot 69 is not saved), the client books them as soon as the Ship Missile is there.
+- **Suit:** PED is the starting state of the AP seed; on Phaaze the suit stayed 5/6 (T08). Other story suit indices
+  are unknown. The client leaves amounts 5–7 alone and only raises lower values to 5; whether amount 6 or 7 freezes is
+  not tested.
+- **Hypermode:** slot 36 is set with every hyper item. T08: corruption in Bryyo (Game Over) and Phaaze (slot 41 1/1)
+  without conflicts; slots 40–42 are game state and never written (`READ_ONLY_SLOTS`).
+- **Energy cells:** inserting tested for cells 1 and 9 on Valhalla (T15, T07, T08); none came back.
 - **Read-back** happens one poll later (0.5 s), not immediately after the write.
 - **slot_data:** complete for the client, `__init__.py` unchanged. Note: `AP_APWORLD_DEV.md` section 5 says the starting
   items are not sent as received items; with `items_handling = 0b111` the server does send them (location −2). The

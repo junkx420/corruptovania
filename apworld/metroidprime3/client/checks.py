@@ -8,6 +8,9 @@ from ..data import locations as location_data
 from ..items import BASE_ID
 from ..location_flags import LOCATION_DETAILS, LOCATION_FLAGS, WORLD_NAMES
 
+# worlds without locations (not in location_flags.py), only for log messages; Phaaze measured in T08/T17
+EXTRA_WORLD_NAMES: dict[int, str] = {0x4B07619AB6125B33: "Phaaze"}
+
 
 @dataclass(frozen=True)
 class ByteInfo:
@@ -44,7 +47,7 @@ class LocationTable:
     def world_name(world_id: int | None) -> str:
         if world_id is None:
             return "?"
-        return WORLD_NAMES.get(world_id, f"0x{world_id:016X}")
+        return WORLD_NAMES.get(world_id) or EXTRA_WORLD_NAMES.get(world_id, f"0x{world_id:016X}")
 
     def collected(self, world_id: int, flags: bytes) -> set[int]:
         """Pickup indices of the world whose byte is set."""

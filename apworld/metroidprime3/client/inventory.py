@@ -145,7 +145,7 @@ SLOT_LIMITS: dict[int, SlotLimit] = {
 }
 
 # slots the client never writes (game state/counters, not saved or with a game meaning)
-READ_ONLY_SLOTS = frozenset({ITEM_PERCENTAGE, 43, 47, FUSES_USED, 69,
+READ_ONLY_SLOTS = frozenset({ITEM_PERCENTAGE, 40, 41, 42, 43, 47, FUSES_USED, 69,  # 40-42 story hyper (41: goal, T17)
                              *range(FUSE_1_USED, FUSE_1_USED + ENERGY_CELLS)})
 
 # logic resource (``long_name`` in header.json, names in data/items.py ``stages``) -> slot (``extra.item_id``)
