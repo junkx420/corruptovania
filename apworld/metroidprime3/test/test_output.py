@@ -237,7 +237,8 @@ class TestSettings(unittest.TestCase):
     def test_world_settings_group(self) -> None:
         self.assertEqual(MP3World.settings_key, "metroidprime3_options")
         group = MP3Settings()
-        self.assertEqual({"iso_file", "tools_folder", "output_folder"}, set(group))
+        self.assertEqual({"iso_file", "tools_folder", "output_folder", "mp3update"}, set(group))
+        self.assertIs(group.mp3update, True)
 
 
 class TestManifest(unittest.TestCase):
