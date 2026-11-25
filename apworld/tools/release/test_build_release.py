@@ -106,8 +106,9 @@ def test_full_build_and_checks(tmp_path: Path) -> None:
     result = br.build_release("v0.3.0", out, br.WorktreeSource(root), example_yaml=yaml, log=logs.append)
     assert set(result) == {"metroidprime3-tools-win.zip", "metroidprime3.apworld", "Example.yaml"}
     sums = (out / "SHA256SUMS.txt").read_text(encoding="utf-8").splitlines()
-    assert sums == sorted(f"{hashlib.sha256((out / n).read_bytes()).hexdigest()}  {n}" for n in result)
-    assert sorted(line.split("  ")[1] for line in sums) == sorted(result)
+    # sha256sum format, one line per asset, sorted by file name
+    assert sums == [f"{hashlib.sha256((out / n).read_bytes()).hexdigest()}  {n}" for n in sorted(result)]
+    assert all(result[n] == hashlib.sha256((out / n).read_bytes()).hexdigest() for n in result)
 
     with pytest.raises(br.ReleaseError, match="does not match release tag v0.4.0"):
         br.build_release("v0.4.0", out, br.WorktreeSource(root), example_yaml=None, log=logs.append)
