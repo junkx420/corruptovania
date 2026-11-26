@@ -176,6 +176,35 @@ public class ApModeTests
         Assert.All(pickups, p => Assert.Equal(new byte[] { 147, 173, 109, 249 }, Value(p, ItemTypeProperty)));
     }
 
+    [Theory]
+    [InlineData(ItemName.ChargeUpgrade)]
+    [InlineData(ItemName.Bomb)]
+    [InlineData(ItemName.SpaceJump)]
+    [InlineData(ItemName.MorphBall)]
+    public void StartingItemPickup_KeepsItsCharacterAndScan(ItemName name)
+    {
+        Item item = Item.get_item_data(name);
+        Patches patches = PickupPatchesFor(name, display_only: true);
+        foreach (PickupLocation location in PickupLocations.get_pickup_locations().Where(l => l.type == "Pickup"))
+        {
+            var dependencies = patches.dependency_patches[location.mrea_id];
+            Assert.Contains(dependencies, d => d.file_id == Conversion.b_to_u64(item.character));
+            Assert.Contains(dependencies, d => d.file_id == Conversion.b_to_u64(item.scan));
+        }
+    }
+
+    [Fact]
+    public void BombScan_LoadsItsLogbookTextAndTextures()
+    {
+        var dependencies = MP3Dependencies.get_dependencies_of(MP3Dependencies.get_file_dependencies(),
+            Conversion.b_to_u64(Item.get_item_data(ItemName.Bomb).scan), "SCAN");
+
+        Assert.Contains(dependencies, d => d.file_id == 0xF0E00E2A0B4E39AEul);
+        Assert.Contains(dependencies, d => d.file_id == 0x8535E6856636FCBEul);
+        Assert.Contains(dependencies, d => d.file_id == 0x1153AC25599D7FABul);
+        Assert.Contains(dependencies, d => d.file_id == 0x7A474E0EBC7A47D4ul);
+    }
+
     [Fact]
     public void ApItemPickup_UsesStaticModel()
     {

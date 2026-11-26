@@ -1,6 +1,6 @@
 # AP patch tool: AP patch data + original ISO → patched ISO (T05a, `.apmp3` T05b)
 
-As of 2026-11-25. Code: `apworld/metroidprime3/patcher/`, tests: `apworld/metroidprime3/test/test_patcher.py`,
+As of 2026-11-26. Code: `apworld/metroidprime3/patcher/`, tests: `apworld/metroidprime3/test/test_patcher.py`,
 `test_tools_download.py` (T28).
 Basis: `AP_PATCHER_CHANGES.md` (T16, `--ap-mode`, APItem), `AP_PATCHER_NOTES.md` (T09), `AP_DEV_SETUP.md` (T01).
 
@@ -12,7 +12,7 @@ Basis: `AP_PATCHER_CHANGES.md` (T16, `--ap-mode`, APItem), `AP_PATCHER_NOTES.md`
 >   (T18). PAL builds apply Deflicker by default (T37b). NTSC-U builds default to MP3Update and Deflicker (T34).
 > - Standard library only: no runtime dependency on Randovania or Archipelago. The letter table and the
 >   checksum are copies of our own; a test compares them with the Randovania original.
-> - The checked-in `randovania/data/gollop_mp3_patcher/MP3Randomizer.exe` is now the T16 state (win-x86, one file).
+> - The checked-in `randovania/data/gollop_mp3_patcher/MP3Randomizer.exe` includes the T40 pickup fix (win-x86, one file).
 
 ## 1. Usage
 
@@ -149,6 +149,14 @@ takes items away (E11), so this is the only place where they can be left out. Di
 `starting_items_for` order). With all seven the string is exactly the starter preset string above. The patch tool
 prints the decoded starting items in its summary (`start …`).
 
+**Own pickups for removed starting items (T40).** Charge Beam, Space Jump Boots, Morph Ball and Morph Ball Bombs
+use their own pickup assets. The old EXE already resolved all assets for the first three. For Morph Ball Bombs it
+failed on SCAN `0x5EC0A71D941A7307`. The scan in `Logbook.pak` has the same embedded dependency group on PAL and
+NTSC-U. The C# table now includes that group, its scan text STRG `0xF0E00E2A0B4E39AE`, and three previously
+unlisted textures (`0x8535E6856636FCBE`, `0x1153AC25599D7FAB`, `0x7A474E0EBC7A47D4`). The pickup's animated
+CHAR, its model and effect dependencies, the generated memo STRG and the STRM jingle were already registered.
+The patcher copies the scan and its dependencies into the destination PAKs so each room can load them.
+
 ### 2.1 Translation for MP3Randomizer
 
 `PatchData.randomizer_patch_data()` returns the same keys as Randovania's patch JSON (`layout patcher-data`), with
@@ -231,7 +239,7 @@ MP3Randomizer, wit). `APPatch` is an `APPlayerContainer` with `procedure: "custo
 ## 3. Requirements
 
 - **Windows** (the helper programs are `.exe`). Python ≥ 3.10, standard library only.
-- The default build (T28) requires `MP3Randomizer.exe` (T16 build,
+- The default build (T28) requires `MP3Randomizer.exe` (T40 build,
   see 4), `lzokay/lzokay.dll` (32-bit), `nodtool/nodtool.exe`, `wit/bin/wit.exe` with the four Cygwin DLLs it imports
   (`cygwin1.dll`, `cygcrypto-1.1.dll`, `cygncursesw-10.dll`, `cygz.dll`, from its PE import table),
   `dummy_attract/attract01.thp`, `dummy_attract/Attract02.thp`. The NTSC-U patches also require `hpatchz.exe`
@@ -289,11 +297,11 @@ An enabled PAL build shows `[3/7] Applying Deflicker...`. It patches four seven-
 bytes and runs with the base helper files alone. The MP3Update PAK patches are available for NTSC-U. See
 [AP_MP3UPDATE_PAL.md](AP_MP3UPDATE_PAL.md) for the PAL analysis.
 
-## 4. Checked-in MP3Randomizer EXE (T16 build)
+## 4. Checked-in MP3Randomizer EXE
 
-`randovania/data/gollop_mp3_patcher/MP3Randomizer.exe` is now the source state of T16
-(`tools/prime3_patcher/MP3Randomizer`, commit `f348f00bf`), as **one** self-contained win-x86 file
-(32 266 413 bytes, no .NET installation needed). The companion file is still `lzokay/lzokay.dll` (unchanged).
+`randovania/data/gollop_mp3_patcher/MP3Randomizer.exe` is built from
+`tools/prime3_patcher/MP3Randomizer` as one self-contained win-x86 file. It loads the 32-bit
+`lzokay/lzokay.dll` from the helper folder.
 
 ```bash
 export PATH="/c/Program Files/dotnet:$PATH" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
@@ -311,6 +319,11 @@ is one file of 32 MB. It still finds `lzokay.dll` via `AppContext.BaseDirectory`
 --require-ship-missile`, input = unmodified PAL `DATA/files`): old checked-in EXE against new single-file EXE,
 **all 13 files SHA-256-identical** (11 patched, Logbook and MiscData unchanged). A full export with
 Randovania (section 5) confirms this.
+
+The T40 EXE test places each of the four removed starting items in two world PAKs and checks the resulting
+pickup scan resources and Bombs scan dependencies in both PAKs. On Windows, set `MP3_PAL_EXTRACTED` and
+`MP3_NTSC_EXTRACTED` to the directories containing `DATA/files` and run
+`python -m pytest -q apworld/tools/test_randomizer_exe.py`. The test skips regions without an extract.
 
 ## 5. Results (acceptance T05a)
 

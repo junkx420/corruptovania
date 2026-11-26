@@ -456,7 +456,7 @@ All licences allow redistribution. The ZIP carries every licence text and `THIRD
 
 | File in the ZIP | Component, version | Licence | Obligations when redistributing |
 |---|---|---|---|
-| `MP3Randomizer.exe` | gollop's MP3Randomizer, modified in this fork (T16, `tools/prime3_patcher`) | MIT (gollop) + GPL-3.0 (fork) | keep the MIT notice; GPL: source is public in this repo |
+| `MP3Randomizer.exe` | gollop's MP3Randomizer, modified in this fork (T16, T40, `tools/prime3_patcher`) | MIT (gollop) + GPL-3.0 (fork) | keep the MIT notice; GPL: source is public in this repo |
 | (inside `MP3Randomizer.exe`) | .NET 8 runtime 8.0.34 (`Microsoft.NETCore.App.Runtime.win-x86`, self-contained single file) | MIT, third-party notices | keep `LICENSE.TXT` and `THIRD-PARTY-NOTICES.TXT` of the runtime pack (not the SDK installer's licence) |
 | `lzokay/lzokay.dll` | lzokay (Jack Andersen) | MIT | keep the notice |
 | `nodtool/nodtool.exe` | nod (AxioDL) | MIT | keep the notice |
@@ -493,8 +493,10 @@ Verification on 2026-11-25 compared the author's actual release asset (SHA-256
 identify the exact patch build used by T33. The MIT grant covers the author's distributed changes. The tools
 ZIP contains binary diffs and helpers. A player supplies a clean game disc image and the tools apply the diffs locally.
 
-T34 prepares a deterministic v0.4.0 tools ZIP with SHA-256
-`ae2a7971f8d0d21847d18ebb9c2bd0c2988bba423f89f23404e50b7555e5c12d`.
+T40 rebuilds the deterministic v0.4.0 tools ZIP with SHA-256
+`2867aa6288c2e25eef176d36a22e2f4dfed0009a6aa73e42cda96ba16dd3b9c9`.
+The changed ZIP entry is the self-contained win-x86 `MP3Randomizer.exe` with the Morph Ball Bombs scan
+dependencies from `Logbook.pak` (see `AP_PATCH_TOOL.md` sections 2 and 4).
 Until v0.4.0 is published, use the helper folder from a checkout or build a local ZIP with
 `python apworld/tools/release/build_release.py --tools-only` and place it into the Archipelago tools cache.
 

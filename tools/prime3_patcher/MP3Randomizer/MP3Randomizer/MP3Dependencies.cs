@@ -549,6 +549,39 @@ public class MP3Dependencies
 			Dependency.import(13216379475820520937uL, "CMDL"),
 			Dependency.import(2178802456762447785uL, "SAND")
 		};
+		// Morph Ball Bombs scan: the embedded DGRP in Logbook.pak is identical on PAL and NTSC-U.
+		dictionary[0x5EC0A71D941A7307ul] = new Dependency[]
+		{
+			Dependency.import(0xAB07101E7F8CF492ul, "TXTR"),
+			Dependency.import(0xF0E00E2A0B4E39AEul, "STRG"),
+			Dependency.import(0x8535E6856636FCBEul, "TXTR"),
+			Dependency.import(0xA9BE1D90A11ADD52ul, "TXTR"),
+			Dependency.import(0xAF971F92B8C6EAFDul, "CMDL"),
+			Dependency.import(0x668D32578A3D6818ul, "TXTR"),
+			Dependency.import(0x2A37C7CCCC1274B9ul, "TXTR"),
+			Dependency.import(0x5EF633D5BC22D643ul, "TXTR"),
+			Dependency.import(0x6019756820AFC36Eul, "TXTR"),
+			Dependency.import(0x0420831D15B32998ul, "TXTR"),
+			Dependency.import(0xE1B712D6EF542E68ul, "TXTR"),
+			Dependency.import(0x1153AC25599D7FABul, "TXTR"),
+			Dependency.import(0x7A474E0EBC7A47D4ul, "TXTR"),
+			Dependency.import(0xB76A031C210BA5E9ul, "CMDL"),
+			Dependency.import(0x77BCEA72227F0DFDul, "CSKR"),
+			Dependency.import(0x378565D2353A7619ul, "CINF"),
+			Dependency.import(0x8332818E764A2278ul, "TXTR"),
+			Dependency.import(0x665162ACD8EFD277ul, "PART"),
+			Dependency.import(0x5576291BA2541A6Cul, "TXTR"),
+			Dependency.import(0x9B2FC709A349EE72ul, "PART"),
+			Dependency.import(0xD8E51C865F4132EEul, "PART"),
+			Dependency.import(0x33228AD1AD6AC323ul, "PART"),
+			Dependency.import(0x891F53D23132743Ful, "ANIM"),
+			Dependency.import(0x1E3CA94A6712F7A9ul, "SAND"),
+			Dependency.import(0xF0C94C57DF6C679Eul, "CHAR")
+		};
+		dictionary[0xF0E00E2A0B4E39AEul] = new Dependency[0];
+		dictionary[0x8535E6856636FCBEul] = new Dependency[0];
+		dictionary[0x1153AC25599D7FABul] = new Dependency[0];
+		dictionary[0x7A474E0EBC7A47D4ul] = new Dependency[0];
 		dictionary[7771942961434651926uL] = new Dependency[0];
 		dictionary[8714149123433208933uL] = new Dependency[10]
 		{
