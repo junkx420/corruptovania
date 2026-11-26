@@ -155,7 +155,8 @@ failed on SCAN `0x5EC0A71D941A7307`. The scan in `Logbook.pak` has the same embe
 NTSC-U. The C# table now includes that group, its scan text STRG `0xF0E00E2A0B4E39AE`, and three previously
 unlisted textures (`0x8535E6856636FCBE`, `0x1153AC25599D7FAB`, `0x7A474E0EBC7A47D4`). The pickup's animated
 CHAR, its model and effect dependencies, the generated memo STRG and the STRM jingle were already registered.
-The patcher copies the scan and its dependencies into the destination PAKs so each room can load them.
+The scan text also embeds texture `0xAB07101E7F8CF492`. The patcher copies the scan and its dependencies into
+the destination PAKs so each room can load them.
 
 ### 2.1 Translation for MP3Randomizer
 

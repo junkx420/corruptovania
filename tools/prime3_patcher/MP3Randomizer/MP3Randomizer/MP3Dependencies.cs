@@ -578,7 +578,8 @@ public class MP3Dependencies
 			Dependency.import(0x1E3CA94A6712F7A9ul, "SAND"),
 			Dependency.import(0xF0C94C57DF6C679Eul, "CHAR")
 		};
-		dictionary[0xF0E00E2A0B4E39AEul] = new Dependency[0];
+		// The scan text embeds this texture through an &image reference on both discs.
+		dictionary[0xF0E00E2A0B4E39AEul] = new Dependency[1] { Dependency.import(0xAB07101E7F8CF492ul, "TXTR") };
 		dictionary[0x8535E6856636FCBEul] = new Dependency[0];
 		dictionary[0x1153AC25599D7FABul] = new Dependency[0];
 		dictionary[0x7A474E0EBC7A47D4ul] = new Dependency[0];

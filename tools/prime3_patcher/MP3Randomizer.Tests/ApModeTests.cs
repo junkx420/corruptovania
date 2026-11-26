@@ -196,13 +196,16 @@ public class ApModeTests
     [Fact]
     public void BombScan_LoadsItsLogbookTextAndTextures()
     {
-        var dependencies = MP3Dependencies.get_dependencies_of(MP3Dependencies.get_file_dependencies(),
+        var dependencyTable = MP3Dependencies.get_file_dependencies();
+        var dependencies = MP3Dependencies.get_dependencies_of(dependencyTable,
             Conversion.b_to_u64(Item.get_item_data(ItemName.Bomb).scan), "SCAN");
 
         Assert.Contains(dependencies, d => d.file_id == 0xF0E00E2A0B4E39AEul);
         Assert.Contains(dependencies, d => d.file_id == 0x8535E6856636FCBEul);
         Assert.Contains(dependencies, d => d.file_id == 0x1153AC25599D7FABul);
         Assert.Contains(dependencies, d => d.file_id == 0x7A474E0EBC7A47D4ul);
+        var scanText = MP3Dependencies.get_dependencies_of(dependencyTable, 0xF0E00E2A0B4E39AEul, "STRG");
+        Assert.Contains(scanText, d => d.file_id == 0xAB07101E7F8CF492ul);
     }
 
     [Fact]

@@ -494,7 +494,7 @@ identify the exact patch build used by T33. The MIT grant covers the author's di
 ZIP contains binary diffs and helpers. A player supplies a clean game disc image and the tools apply the diffs locally.
 
 T40 rebuilds the deterministic v0.4.0 tools ZIP with SHA-256
-`2867aa6288c2e25eef176d36a22e2f4dfed0009a6aa73e42cda96ba16dd3b9c9`.
+`ec8bf248e83e5b1baf2bacf0a1ca9284e4964ea7aed73ea7dc10f8dc8e0e2d00`.
 The changed ZIP entry is the self-contained win-x86 `MP3Randomizer.exe` with the Morph Ball Bombs scan
 dependencies from `Logbook.pak` (see `AP_PATCH_TOOL.md` sections 2 and 4).
 Until v0.4.0 is published, use the helper folder from a checkout or build a local ZIP with
