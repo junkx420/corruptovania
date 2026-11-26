@@ -82,4 +82,5 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  game ID   {result.game_id} ({result.dol_version})")
     print(f"  seed ID   {result.seed_id.hex()}" + ("" if args.no_verify else " (read back from the ISO)"))
     print(f"  player    {data.player_name} (slot {data.slot}, seed {data.seed_name})")
+    print("  start     Combat Visor, " + ", ".join(patch_data.starting_item_names(data.starting_items)))
     return 0

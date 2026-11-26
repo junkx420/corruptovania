@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import itertools
 import json
 import os
 import random
@@ -216,6 +217,25 @@ class TestPatchData(unittest.TestCase):
         }  # fmt: skip
         expected = {short_names[item["name"]] for item in item_data.STARTING_ITEMS} - {None}
         self.assertEqual(given, expected | {"HyperModeOriginal"})  # 1 = start without corrupted hypermode
+
+    @needs_randovania_source
+    def test_starting_items_string_matches_randovania_order(self) -> None:
+        """T31: every subset of the starting items gives the string Randovania's starting_items_for would build."""
+        order = ORIGINAL["STARTING_ITEMS_ORDER"]
+        short_names = {"Power Beam": "PowerBeam", "Charge Beam": "ChargeUpgrade", "Morph Ball Bombs": "Bomb",
+                       "Scan Visor": "ScanVisor", "Morph Ball": "MorphBall", "Space Jump Boots": "DoubleJump"}
+        names = [item["name"] for item in item_data.STARTING_ITEMS]
+        for size in range(len(names) + 1):
+            for subset in itertools.combinations(names, size):
+                values = {short_names[n]: 1 for n in subset if n in short_names} | {"HyperModeOriginal": 1}
+                expected = "custom " + "".join(f"{values.get(name, 0):02x}" if name in ("MissileAmount",
+                                                                                         "MissileCapacity")
+                                               else f"{values.get(name, 0):x}" for name in order)
+                self.assertEqual(patch_data.starting_items_string(subset), expected, subset)
+                self.assertEqual(set(patch_data.starting_item_names(expected)), set(subset) - {"Combat Visor"})
+        self.assertEqual(patch_data.starting_items_string(names), patch_data.STANDARD_STARTING_ITEMS)
+        with self.assertRaises(patch_data.PatchDataError):
+            patch_data.starting_items_string(["Screw Attack"])
 
 
 class TestRandomizerCommand(unittest.TestCase):

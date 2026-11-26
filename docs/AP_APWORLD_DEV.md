@@ -81,6 +81,13 @@ Collecting it opens Norion Docking Hub Alpha (3) and Pirate Homeworld Scrapvault
 three checks and caused playthrough seed 6 to stall in testing. The default `test_generation.py` run covers
 seeds 1–300 in process. Set `MP3_EXTENDED_FILL_TESTS=1` to cover seeds 1–1200.
 
+T31 (E23) adds the options `starting_items`, `trick_level` and `trick_overrides` (player guide `AP_OPTIONS.md`). The
+T29 rule is unchanged (only with fully default options). With any starting item removed, `pre_fill` places the
+opening chain (`opening.py`) instead: own progression items forward onto own open checks until 8 are open, because two
+`local_early_items` (sphere 1 has only checks 4 and 11) still left 0.3–5 % FillErrors. `test_generation.py` runs every
+starting item choice for 3 seeds (60 with `MP3_EXTENDED_FILL_TESTS=1`); the full measurement is in `AP_OPTIONS.md`
+section 4.
+
 Since T05b the output ZIP contains a **patch file** `<output name>.apmp3` per MP3 slot (e.g.
 `AP_38224278823687041413_P2_Samus.apmp3`) next to `.archipelago` and the spoiler. Format: `AP_PATCH_TOOL.md` section 2.3.
 The player builds their ISO from it (section 6).
@@ -105,8 +112,9 @@ The own tests (`apworld/metroidprime3/test/`) only run in the Archipelago clone 
 | File | Checks |
 |---|---|
 | `test_ids.py` | 99 locations with ID = base + pickup index, location 0 missing; item IDs against a fixed snapshot; every data item has an ID; pool = 99 items according to `data/items.py` incl. Hypermode (48 Missile Expansions); starting items precollected; `slot_data` JSON-serialisable; no `randovania` imports |
-| `test_logic.py` | rule semantics (and/or, "before event" = satisfied, trick = never, Progressive Beam, launcher lock, Energy Cells, damage); with all items all 99 locations and the goal are reachable; the only missing event is "Gel Processing Site Out of Bounds" (only via trick, T20); **node lock**: in 70 inventories (all minus one item each, 40 random) the `escape_requirement` of every reachable dangerous event node holds there; control value Green Lock ↔ Grapple Lasso; comparison of reachable nodes/events/locations with `playthrough_sim.World.reach(logic=True)` for 70 inventories; **dead-end locations (E22)**: location rules = data (22 non-trivial), the three Leviathan cores are reachable without their exit item but the location is not, the exit item cannot be placed in its own core |
+| `test_logic.py` | rule semantics (and/or, "before event" = satisfied, trick leaf = slot level ≥ leaf level, default all off (T30), Progressive Beam, launcher lock, Energy Cells, damage); with all items all 99 locations and the goal are reachable; the only missing event is "Gel Processing Site Out of Bounds" (only via trick, T20); **node lock**: in 70 inventories (all minus one item each, 40 random) the `escape_requirement` of every reachable dangerous event node holds there; control value Green Lock ↔ Grapple Lasso; comparison of reachable nodes/events/locations with `playthrough_sim.World.reach(logic=True)` for 70 inventories; **dead-end locations (E22)**: location rules = data (22 non-trivial), the three Leviathan cores are reachable without their exit item but the location is not, the exit item cannot be placed in its own core |
 | `test_output.py` | `.apmp3` (T05b): solo seed, MP3 + ChecksFinder and MP3 + ChecksFinder + MP3 → exactly one `.apmp3` per MP3 slot; 99 locations (1–99), own items = real name, foreign ones (also from the other MP3 slot) = `Archipelago Item`, seed ID = `patcher.seed_id.make_seed_id`; read with the patch tool and with `MP3Container`. Patch tool: `.apmp3` = same data as JSON, 7 error cases, `--dry-run` with `.apmp3`. Launcher helpers (arguments, client arguments from the manifest, output path, tools folder), component recognises `.apmp3`; settings (game ID check); `archipelago.json`, `requirements.txt`, file selection as in "Build APWorlds" |
+| `test_options.py` | T31 (E23): every starting item choice (pool 99, Missile Expansions out, precollected items, `slot_data`, patch string), fixed items cannot be removed, trick resolution and override schema, regions follow the slot's tricks, opening chain (none with defaults, forward and locked, respects `non_local_items`) |
 | `test_playthrough.py` | 20 solo seeds with Archipelago's fill (`distribute_items_restrictive` + progression balancing); the real AP placement goes to `playthrough_sim.play` (eager 0 and 0.5); the logic-faithful player wins every seed with 99/99 locations and is never trapped (dead-end rule, T25). Control: the same seeds without the location rules, played without the rule, strand the player (T25: 20/20, mostly in location 84, twice in the Pirate Homeworld core) |
 
 Counter-check (once, not as a test): without the node lock in the connections the same player wins only 10 of the
@@ -126,7 +134,8 @@ ammo without a launcher). Irrelevant for the logic, because expansions are not p
 | `locations.py` | 99 locations from `data/locations.py`, groups per game region (`Norion`, `Bryyo - Fire`, …) |
 | `rules.py` | compiler requirement tree → AP rule; `StaticState` for the precomputation |
 | `regions.py` | one AP region per logic node, entrances, event locations, precomputation "reachable with all items" |
-| `options.py` | `MP3Options` = only Archipelago's default options (E3) |
+| `options.py` | `MP3Options`: Archipelago's default options plus `starting_items`, `trick_level`, `trick_overrides` (E23, T31; player guide `docs/AP_OPTIONS.md`) |
+| `opening.py` | opening chain for small starting inventories (T31): forward placement of own progression items in `pre_fill` until 8 own checks are open |
 | `output.py` | `.apmp3`: `MP3Container` (`APPatch`), `displayed_pickups`, `write_patch_file` (T05b) |
 | `settings.py` | `MP3Settings` = section `metroidprime3_options` of the `host.yaml` (original ISO, tools folder, output folder, NTSC-U MP3Update/Deflicker) |
 | `open_patch.py` | launcher: `.apmp3` → build ISO → start client (T05b, section 6) |
@@ -161,7 +170,9 @@ matches `playthrough_sim` (test).
   Launcher lock as possession logic: ammo of an item with `lock.opened_by` = another item only counts with that item.
   Expansions are `filler` and are not collected into the state by Archipelago at all.
 - `event` → `state.has(event)`. `event` with `negate` ("before event X") = **satisfied** (E18).
-- `trick` = never satisfied (MVP). `item` with `negate` and `node` = never satisfied.
+- `trick`: satisfied when the slot's level for that trick is at least the leaf's level (`RuleCompiler(player, tricks)`,
+  T30). The levels come from the YAML options `trick_level`/`trick_overrides` (T31, `options.resolve_tricks`); with
+  the default (off) every trick leaf is unsatisfied, as in the MVP. `item` with `negate` and `node` = never satisfied.
 - `damage`: `99 + 100 × Energy Tanks > ceil(reduction × int(amount × 1.5))` → minimum number of Energy Tanks.
 - `misc`/`version`: static from `game.SETTINGS`.
 
@@ -180,6 +191,7 @@ Everything the client needs for the target state (E11: target = starting items +
                      "Morph Ball", "Morph Ball Bombs"],
   "starting_resources": {"Charge Beam": 1, "Power Beam": 1, "Combat Visor": 1, "Scan Visor": 1,
                          "Space Jump Boots": 1, "Morph Ball": 1, "Morph Ball Bomb": 1},
+  "tricks": {},
   "items": {
     "Progressive Beam": {"id": 1297101569, "stages": [[["Plasma Beam", 1]], [["Nova Beam", 1]]], "lock": null},
     "Missile Expansion": {"id": 1297101588, "stages": [[["Missile", 5]]],
@@ -198,8 +210,9 @@ Everything the client needs for the target state (E11: target = starting items +
 | `seed_name` | Archipelago's seed name (for the seed check, T18) |
 | `base_id` | base of the IDs (location ID − `base_id` = pickup index) |
 | `goal_event`, `start_location` | goal event and starting node (info, fixed in the MVP) |
-| `starting_items` | names of the starting items (Archipelago does not send them as received items) |
-| `starting_resources` | resource amounts of the starting items (names as in the requirements, e.g. `Morph Ball Bomb`) |
+| `starting_items` | names of the slot's starting items (T31: the YAML choice, E23; before T31 always all seven). The client takes its target from them; older slot_data without the key = all seven |
+| `starting_resources` | resource amounts of the slot's starting items (names as in the requirements, e.g. `Morph Ball Bomb`) |
+| `tricks` | T31, information only: the slot's trick levels `{trick name: 1–3}` the logic expects (`{}` = no tricks) |
 | `items` | all MP3 items (pool and start): `id`, `stages` (list of stages, per stage `[resource, amount]`; the n-th received copy gives stage n, the last one applies to all further copies), `lock` (launcher lock as in `data/items.py`, otherwise `null`; the client reproduces the lock, E15) |
 | `locations` | location ID (as a string) → pickup index 1–99 |
 

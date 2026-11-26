@@ -160,10 +160,10 @@ def create_regions(world: "MP3World", tricks: Mapping[str, int] | None = None) -
         region.locations.append(location)
 
 
-def starting_resources() -> dict[str, int]:
-    """Resource amounts from the starting items (what the client starts from, E11)."""
+def starting_resources(names: list[str] | None = None) -> dict[str, int]:
+    """Resource amounts from the starting items ``names`` (default: all of data/items.py STARTING_ITEMS, E11)."""
     totals: Counter = Counter()
-    for name in starting_names():
+    for name in starting_names() if names is None else names:
         for stage_resource, qty in RECORDS[name]["stages"][0]:
             totals[stage_resource] += qty
     return dict(totals)

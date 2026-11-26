@@ -214,6 +214,26 @@ class TestTargets(unittest.TestCase):
         extra = received + [("Energy Tank", inv.START_INVENTORY_LOCATION)]  # start_inventory option
         self.assertEqual(effective_items(starting_names(), extra).count("Energy Tank"), 2)
 
+    def test_slot_starting_items(self) -> None:
+        """T31: starting items come from slot_data; older slot_data without the field = all seven."""
+        self.assertEqual(inv.slot_starting_items({}), list(inv.DEFAULT_STARTING_ITEMS))
+        self.assertEqual(inv.slot_starting_items({"starting_items": None}), list(inv.DEFAULT_STARTING_ITEMS))
+        self.assertEqual(sorted(inv.DEFAULT_STARTING_ITEMS), sorted(starting_names()))
+        short = ["Power Beam", "Combat Visor", "Scan Visor", "Space Jump Boots"]
+        self.assertEqual(inv.slot_starting_items({"starting_items": short + ["Unknown Thing"]}), short)
+
+    def test_removed_starting_item_comes_from_the_server(self) -> None:
+        """A seed without Morph Ball: the ISO starts without it, the client never gives it until it is received."""
+        start = ["Charge Beam", "Power Beam", "Combat Visor", "Scan Visor", "Space Jump Boots", "Morph Ball Bombs"]
+        iso_start = start_inventory()
+        iso_start[inv.MORPH_BALL] = (0, 0)
+        received = [(n, inv.START_INVENTORY_LOCATION) for n in start]
+        self.assertEqual(settle(effective_items(start, received), iso_start), iso_start)
+        after = settle(effective_items(start, received + [("Morph Ball", 4)]), iso_start)
+        self.assertEqual(after[inv.MORPH_BALL], (1, 1))
+        self.assertEqual({s: v for s, v in after.items() if s != inv.MORPH_BALL},
+                         {s: v for s, v in iso_start.items() if s != inv.MORPH_BALL})
+
     def test_expansions_before_launcher(self) -> None:
         items = starting_names() + ["Missile Expansion"] * 3
         inventory = settle(items, start_inventory())

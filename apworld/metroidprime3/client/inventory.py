@@ -280,7 +280,8 @@ ITEM_EFFECTS: dict[str, ItemEffect] = {
                                           note="rule cell: slot 22 as counter, an inserted cell (slot 52+i) is never "
                                                "given again")
        for i in range(ENERGY_CELLS)},
-    # starting items (data/items.py STARTING_ITEMS; the ISO already has them, the client only raises missing ones)
+    # starting items (data/items.py STARTING_ITEMS). The slot's starting items (slot_data, E23/T31) are already in the
+    # patched ISO; a removed one comes from the server like any pool item
     "Charge Beam": ItemEffect(_single(CHARGE_BEAM)),
     "Power Beam": ItemEffect(_single(POWER_BEAM)),
     "Combat Visor": ItemEffect(_single(COMBAT_VISOR)),
@@ -300,6 +301,24 @@ class SlotTarget:
     capacity: int
     rule: str
     sources: tuple[str, ...] = ()
+
+
+# Starting items of a seed before T31 (data/items.py STARTING_ITEMS, all seven); the default when slot_data has none.
+DEFAULT_STARTING_ITEMS: tuple[str, ...] = (
+    "Charge Beam", "Power Beam", "Combat Visor", "Scan Visor", "Space Jump Boots", "Morph Ball", "Morph Ball Bombs",
+)
+
+
+def slot_starting_items(slot_data: Mapping) -> list[str]:
+    """The slot's starting items from ``slot_data["starting_items"]`` (E23, T31).
+
+    Older slot_data without the field (or with an unusable value) means the seven default starting items. Names this
+    client does not know are dropped (``compute_targets`` would skip them anyway).
+    """
+    value = slot_data.get("starting_items") if isinstance(slot_data, Mapping) else None
+    if not isinstance(value, list) or not all(isinstance(name, str) for name in value):
+        return list(DEFAULT_STARTING_ITEMS)
+    return [name for name in value if name in ITEM_EFFECTS]
 
 
 def effective_items(starting: Iterable[str], received: Iterable[tuple[str, int]]) -> list[str]:

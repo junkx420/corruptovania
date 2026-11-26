@@ -16,7 +16,8 @@ from .data import game as game_data
 from .items import (BASE_ID, FILLER_ITEM_NAME, GAME_NAME, ITEM_OFFSETS, RECORDS, MP3Item, classification,
                     item_name_groups, item_name_to_id, pool_names, starting_names)
 from .locations import LOCATIONS, location_name_groups, location_name_to_id
-from .options import MP3Options
+from .options import FIXED_STARTING_ITEMS, REMOVABLE_STARTING_ITEMS, MP3Options, resolve_tricks
+from .opening import place_opening
 from .output import write_patch_file
 from .patcher.patch_data import CONTAINER_FILE_ENDING
 from .regions import GOAL_EVENT, create_regions, starting_resources
@@ -69,19 +70,37 @@ class MP3World(World):
     def get_filler_item_name(self) -> str:
         return FILLER_ITEM_NAME
 
+    # set in generate_early (E23, T31)
+    starting_item_names: list[str]  # the slot's starting items, data order
+    removed_starting_items: list[str]  # removable starting items the player gave up; they go into the pool
+    tricks: dict[str, int]  # the slot's trick levels {trick name: 1-3}, only tricks above "off"
+
     def generate_early(self) -> None:
+        kept = set(FIXED_STARTING_ITEMS) | set(self.options.starting_items.value)
+        self.starting_item_names = [name for name in starting_names() if name in kept]
+        self.removed_starting_items = [name for name in REMOVABLE_STARTING_ITEMS if name not in kept]
+        self.tricks = resolve_tricks(self.options.trick_level.value, self.options.trick_overrides.value)
         if all(getattr(self.options, name).value == option.from_any(option.default).value
                for name, option in self.options_dataclass.type_hints.items()):
             # Screw Attack opens two more checks from the starting inventory. Keep it in this player's world.
             self.multiworld.local_early_items[self.player]["Screw Attack"] = 1
 
+    def pre_fill(self) -> None:
+        if self.removed_starting_items:
+            place_opening(self)  # E23, T31: small starting inventories (opening.py)
+
     def create_regions(self) -> None:
-        create_regions(self)
+        create_regions(self, self.tricks)
 
     def create_items(self) -> None:
-        for name in starting_names():
+        for name in self.starting_item_names:
             self.multiworld.push_precollected(self.create_item(name))
-        self.multiworld.itempool += [self.create_item(name) for name in pool_names()]
+        pool = pool_names()
+        # E23: every removed starting item replaces one Missile Expansion (the pool stays at 99 items)
+        for name in self.removed_starting_items:
+            last = len(pool) - 1 - pool[::-1].index(FILLER_ITEM_NAME)
+            pool[last] = name
+        self.multiworld.itempool += [self.create_item(name) for name in pool]
 
     def set_rules(self) -> None:
         player = self.player
@@ -99,8 +118,9 @@ class MP3World(World):
             "base_id": BASE_ID,
             "goal_event": GOAL_EVENT,
             "start_location": list(game_data.START_LOCATION),
-            "starting_items": starting_names(),
-            "starting_resources": starting_resources(),
+            "starting_items": list(self.starting_item_names),  # T31: the slot's choice (E23)
+            "starting_resources": starting_resources(self.starting_item_names),
+            "tricks": dict(self.tricks),  # T31, informational: trick levels the logic expects (empty = none)
             "items": {
                 name: {
                     "id": BASE_ID + ITEM_OFFSETS[name],

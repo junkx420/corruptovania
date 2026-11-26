@@ -105,7 +105,10 @@ writing, read-back, throttling).
 
 There is **no stored index**. On every poll the client computes the target of every slot it manages from
 
-- the starting items (`slot_data["starting_items"]`, else the APWorld's own list), and
+- the slot's starting items (`slot_data["starting_items"]`, `inventory.slot_starting_items`; T31: the YAML choice,
+  E23. Older slot_data without the key = all seven default starting items). A removed starting item is not in the
+  patched ISO and only enters the target once it is received, like any pool item. On connect the client logs which
+  starting items the seed leaves out, and
 - **all** received items (`items_received`, `items_handling = 0b111`, SPEC E10: own items come from the server too).
 
 With `0b111` the server also sends the precollected starting items itself, as starting inventory (location `-2`,

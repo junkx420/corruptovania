@@ -32,7 +32,46 @@ CONTAINER_MEMBER = "patch_data.json"
 STANDARD_STARTING_ITEMS = "custom 0000000010010000000001100100100000000010000"
 STANDARD_STARTING_LOCATION = "custom c133f919c108bdf9 d8cf355d3e9e3741"
 
+# T31 (E23): positions in the custom starting items string (Randovania's ``gollop_corruption_patcher``
+# STARTING_ITEMS_ORDER, MP3Randomizer ``MP3Inventory.get_custom_inventory``: one hex digit per entry, MissileAmount and
+# MissileCapacity two digits each, so string offsets 16+ are entry index + 2). MP3Randomizer writes these values into
+# the SPWN object of the starting room: they are the inventory of a new game. Combat Visor is not in the string (the
+# game always has it). AP item name -> string offset of its digit.
+STARTING_ITEM_DIGITS: dict[str, int] = {
+    "Power Beam": 8,
+    "Charge Beam": 11,
+    "Morph Ball Bombs": 21,
+    "Scan Visor": 22,
+    "Morph Ball": 25,
+    "Space Jump Boots": 28,
+}
+STARTING_ITEMS_ALWAYS_PRESENT = frozenset({"Combat Visor"})
+_HYPERMODE_ORIGINAL_DIGIT = 38  # 1 = no corrupted hypermode at the start (as the Starter Preset)
+
 _STARTING_ITEMS_RE = re.compile(r"^custom [0-9a-f]{43}$")
+
+
+def starting_items_string(names) -> str:
+    """Custom starting items string for the given AP starting item names (T31).
+
+    Only the items of ``STARTING_ITEM_DIGITS`` (plus the always present Combat Visor) are allowed. With all seven
+    default starting items this is exactly :data:`STANDARD_STARTING_ITEMS`.
+    """
+    digits = ["0"] * 43
+    digits[_HYPERMODE_ORIGINAL_DIGIT] = "1"
+    for name in names:
+        if name in STARTING_ITEMS_ALWAYS_PRESENT:
+            continue
+        if name not in STARTING_ITEM_DIGITS:
+            raise PatchDataError(f"{name!r} cannot be a starting item of the patched game")
+        digits[STARTING_ITEM_DIGITS[name]] = "1"
+    return "custom " + "".join(digits)
+
+
+def starting_item_names(text: str) -> list[str]:
+    """Inverse of :func:`starting_items_string` for the digits it knows (for the patch tool's summary)."""
+    digits = text.split(" ", 1)[1]
+    return [name for name, pos in STARTING_ITEM_DIGITS.items() if digits[pos] != "0"]
 _STARTING_LOCATION_RE = re.compile(r"^custom [0-9a-f]{1,16} [0-9a-f]{1,16}$")
 _SEED_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 

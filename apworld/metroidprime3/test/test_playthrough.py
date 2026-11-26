@@ -10,7 +10,7 @@ import unittest
 
 from BaseClasses import Location, MultiWorld
 from Fill import balance_multiworld_progression, distribute_items_restrictive
-from test.general import gen_steps, setup_solo_multiworld
+from test.general import gen_steps, setup_multiworld, setup_solo_multiworld
 from worlds.AutoWorld import call_all
 
 from .. import MP3World
@@ -24,11 +24,14 @@ SEEDS = range(1, 21)
 FOREIGN_ITEM = {"name": "Foreign item", "stages": [[]]}  # an item of another world gives nothing locally
 
 
-def generate(seed: int, location_rules: bool = True, tricks: dict | None = None) -> MultiWorld:
+def generate(seed: int, location_rules: bool = True, tricks: dict | None = None,
+             options: dict | None = None) -> MultiWorld:
     """The generation steps of Archipelago's Main.py up to progression balancing, without output.
     ``location_rules=False`` drops the locations' escape rules before the fill (logic before E22, control).
-    ``tricks``: the slot's trick levels (E23; T31 passes them from the options)."""
-    if tricks:
+    ``tricks``: the slot's trick levels passed directly (T30); ``options``: YAML options of the slot (T31)."""
+    if options:
+        multiworld = setup_multiworld(MP3World, gen_steps, seed, options)
+    elif tricks:
         multiworld = multiworld_with_tricks(tricks, seed)
     else:
         multiworld = setup_solo_multiworld(MP3World, gen_steps, seed)
@@ -90,6 +93,30 @@ class TestPlaythrough(unittest.TestCase):
                     self.assertTrue(result["won"], (seed, eager, result))
                     self.assertEqual(result["collected"], 99, (seed, eager, result["missing"]))
                     self.assertFalse(result["trapped"], (seed, eager, result["end"]))
+
+    def test_logic_following_player_wins_with_small_starting_items(self) -> None:
+        """E23 (T31): seeds with removed starting items (incl. the world's early items) and the YAML trick option; the
+        simulator's player starts with the same items and wins with 99/99 locations, never trapped."""
+        sim = load_playthrough_sim()
+        if sim is None:
+            self.skipTest("apworld/tools/playthrough_sim.py not found")
+        data = sim.load_data()
+        setups = [(["Space Jump Boots"], "off"),  # "only Space Jump" (player guide example)
+                  (["Space Jump Boots", "Morph Ball"], "off"),
+                  (["Charge Beam", "Space Jump Boots", "Morph Ball Bombs"], "off"),  # without Morph Ball
+                  (["Charge Beam", "Morph Ball", "Morph Ball Bombs"], "advanced")]
+        for kept, level in setups:
+            multiworld0 = generate(1, options={"starting_items": kept, "trick_level": level})
+            world0 = multiworld0.worlds[1]
+            world = sim.World(data, tricks=world0.tricks, starting_items=world0.starting_item_names)
+            for seed in range(1, 11):
+                with self.subTest(kept=kept, tricks=level, seed=seed):
+                    multiworld = generate(seed, options={"starting_items": kept, "trick_level": level})
+                    placement = ap_placement(multiworld, 1)
+                    result = sim.play(world, placement, random.Random(seed), 0.5)
+                    self.assertTrue(result["won"], (seed, result))
+                    self.assertEqual(result["collected"], 99, (seed, result["missing"]))
+                    self.assertFalse(result["trapped"], (seed, result["end"]))
 
     def test_dead_ends_trap_the_player_without_location_rules(self) -> None:
         """Control (E22, T08 B5): the same seeds generated without the location rules, played by a player who

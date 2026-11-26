@@ -16,13 +16,14 @@ import Utils
 from CommonClient import ClientCommandProcessor, CommonContext, get_base_parser, gui_enabled, logger, server_loop
 from NetUtils import ClientStatus
 
-from ..items import BASE_ID, GAME_NAME, item_name_to_id, starting_names
+from ..items import BASE_ID, GAME_NAME, item_name_to_id
 from .checks import CheckDetector, LocationTable
 from .flag_block import FlagBlockFinder
 from .game import GameState, read_game_state
 from .give import ItemGiver
 from .goal import GoalDetector
-from .inventory import ITEM_EFFECTS, START_INVENTORY_LOCATION, desired_value, effective_items, slot_label
+from .inventory import (DEFAULT_STARTING_ITEMS, ITEM_EFFECTS, START_INVENTORY_LOCATION, desired_value, effective_items,
+                        slot_label, slot_starting_items)
 from .learning import LearningMode
 from .memory import ConnectionLost, ConnectStatus, MemoryAccess, MemoryAccessError
 from .seed_check import SeedCheck, SeedCheckResult, SeedStatus
@@ -150,6 +151,10 @@ class MP3Context(CommonContext):
             if self.slot_data.get("base_id", BASE_ID) != BASE_ID:
                 logger.error("base_id of the seed does not match this client. Location IDs would be wrong.")
             self._check_slot_data_items()
+            removed = [name for name in DEFAULT_STARTING_ITEMS if name not in slot_starting_items(self.slot_data)]
+            if removed:
+                logger.info(f"This seed starts without {', '.join(removed)}; "
+                            "the client gives each one once it is received.")
             identity = getattr(self, "connected_identity", None)
             if identity != self._announced_identity:
                 self._announced_identity = identity
@@ -272,7 +277,7 @@ class MP3Context(CommonContext):
 
     def counted_items(self) -> list[str]:
         """All items that go into the target: starting items (``slot_data``) + received items (E11)."""
-        starting = self.slot_data.get("starting_items") or starting_names()
+        starting = slot_starting_items(self.slot_data)  # T31: the slot's choice, default all seven
         received: list[tuple[str, int]] = []
         for item in self.items_received:
             name = ITEM_ID_TO_NAME.get(item.item)

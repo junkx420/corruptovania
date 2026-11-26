@@ -45,7 +45,7 @@ ITEM_OFFSETS: dict[str, int] = {
     "Energy Cell 7": 28,
     "Energy Cell 8": 29,
     "Energy Cell 9": 30,
-    # starting items (precollected, never in the pool)
+    # starting items (precollected; a removed one goes into the pool instead, E23/T31)
     "Charge Beam": 101,
     "Power Beam": 102,
     "Combat Visor": 103,

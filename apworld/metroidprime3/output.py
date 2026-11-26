@@ -82,6 +82,8 @@ def build_patch_data(multiworld: MultiWorld, player: int) -> patch_data.PatchDat
         slot=player,
         player_name=multiworld.player_name[player],
         pickups=displayed_pickups(multiworld, player),
+        # T31: the slot's starting items (E23); removed ones are not in the game at the start
+        starting_items=patch_data.starting_items_string(multiworld.worlds[player].starting_item_names),
     )
 
 

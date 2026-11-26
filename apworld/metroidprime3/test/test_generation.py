@@ -3,10 +3,12 @@
 import os
 import unittest
 
+from BaseClasses import CollectionState
 from Fill import distribute_items_restrictive
 from test.general import setup_multiworld
 
 from .. import MP3World
+from .test_options import ALL_KEPT_SUBSETS
 
 
 class TestGeneration(unittest.TestCase):
@@ -17,12 +19,25 @@ class TestGeneration(unittest.TestCase):
     def test_extended_default_seeds(self) -> None:
         self.check_seeds(range(301, 1201))
 
-    def check_seeds(self, seeds: range) -> None:
+    def check_seeds(self, seeds: range, options: dict | None = None) -> None:
         for seed in seeds:
-            with self.subTest(seed=seed):
-                multiworld = setup_multiworld(MP3World, seed=seed)
+            with self.subTest(seed=seed, options=options):
+                multiworld = setup_multiworld(MP3World, seed=seed, options=options)
                 distribute_items_restrictive(multiworld)
                 self.assertFalse(multiworld.get_unfilled_locations())
+                if options:
+                    self.assertTrue(multiworld.can_beat_game(CollectionState(multiworld)))
+
+    def test_every_starting_item_choice(self) -> None:
+        """E23 (T31): all 16 starting item choices fill with Archipelago's fill (3 seeds each; 60 with
+        MP3_EXTENDED_FILL_TESTS=1). Measured in T31: 0 failures in 300 seeds per choice (docs/AP_OPTIONS.md)."""
+        seeds = range(1, 61) if os.environ.get("MP3_EXTENDED_FILL_TESTS") == "1" else range(1, 4)
+        for kept in ALL_KEPT_SUBSETS:
+            self.check_seeds(seeds, {"starting_items": kept})
+
+    def test_tricks_with_small_starting_items(self) -> None:
+        self.check_seeds(range(1, 4), {"starting_items": ["Space Jump Boots"], "trick_level": "advanced"})
+        self.check_seeds(range(1, 4), {"starting_items": [], "trick_overrides": {"Bomb Jump": "advanced"}})
 
     def test_screw_attack_is_placed_in_the_first_sphere(self) -> None:
         multiworld = setup_multiworld(MP3World, seed=51)

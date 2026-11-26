@@ -137,6 +137,15 @@ Space Jump Boots and `HyperModeOriginal = 1` (no corrupted Hypermode). The game 
 not in the string. A test decodes the string with Randovania's `STARTING_ITEMS_ORDER` and compares it with
 `data/items.py STARTING_ITEMS`.
 
+**Slot starting items (T31, E23).** Since v0.4.0 `generate_output` writes the slot's own starting items
+(`patch_data.starting_items_string`, YAML option `starting_items`, `docs/AP_OPTIONS.md`). MP3Randomizer puts the
+values into the SPWN object of the starting room, so a new game starts without the removed items; the client never
+takes items away (E11), so this is the only place where they can be left out. Digits used: Power Beam 8, Charge Beam
+(ChargeUpgrade) 11, Morph Ball Bombs (Bomb) 21, Scan Visor 22, Morph Ball 25, Space Jump Boots (DoubleJump) 28,
+`HyperModeOriginal` 38 = 1 (offsets in the string after `custom `; a test checks every subset against Randovania's
+`starting_items_for` order). With all seven the string is exactly the starter preset string above. The patch tool
+prints the decoded starting items in its summary (`start …`).
+
 ### 2.1 Translation for MP3Randomizer
 
 `PatchData.randomizer_patch_data()` returns the same keys as Randovania's patch JSON (`layout patcher-data`), with

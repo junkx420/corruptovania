@@ -1,17 +1,13 @@
 """Rule evaluation, reachability with all items, escape gates (E18), dead-end locations (E22), trick levels as a
 parameter (E23, T30) and a cross-check against playthrough_sim."""
 
-import functools
 import random
-import sys
 import unittest
-from unittest import mock
 
 from BaseClasses import CollectionState, MultiWorld
-from test.general import gen_steps, setup_solo_multiworld
+from test.general import gen_steps, setup_multiworld
 
 from .. import MP3World
-from .. import regions as regions_module
 from ..data import game as game_data
 from ..data import locations as location_data
 from ..data import logic as logic_data
@@ -26,11 +22,11 @@ DEFAULT_RULE_LOCATIONS = {26, 28, 29, 35, 56, 57, 58, 59, 60, 61, 62, 63, 64, 75
 
 
 def multiworld_with_tricks(tricks: dict, seed: int | None = None) -> MultiWorld:
-    """A solo multiworld up to pre_fill whose regions use ``tricks`` (what T31's options will pass)."""
-    module = sys.modules[MP3World.__module__]
-    patched = functools.partial(regions_module.create_regions, tricks=tricks)
-    with mock.patch.object(module, "create_regions", patched):
-        return setup_solo_multiworld(MP3World, gen_steps, seed)
+    """A solo multiworld up to pre_fill whose regions use ``tricks`` (T31: through the ``trick_overrides`` option,
+    so only data/tricks.py USABLE_TRICKS up to their level)."""
+    multiworld = setup_multiworld(MP3World, gen_steps, seed, {"trick_overrides": dict(tricks)})
+    assert multiworld.worlds[1].tricks == {name: level for name, level in tricks.items() if level}
+    return multiworld
 
 
 def state_with(multiworld: MultiWorld, player: int, names) -> CollectionState:
