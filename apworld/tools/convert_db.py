@@ -473,7 +473,9 @@ class Converter:
             "items.py": {"ITEMS": items, "STARTING_ITEMS": starting_items},
         }
         attach_escape_requirements(files)
-        attach_location_escapes(files)
+        reentry = attach_reentry_requirements(files)
+        attach_location_escapes(files, reentry)
+        mark_after_goal_locations(files)
         files["tricks.py"] = trick_report(files)
         return files
 
@@ -487,7 +489,12 @@ FALSE: list = []
 
 def _implies(stronger: dict, weaker: dict) -> bool:
     """True if every inventory that satisfies ``stronger`` also satisfies ``weaker``."""
-    return all(stronger.get(k, -1) >= v for k, v in weaker.items())
+    if not weaker.keys() <= stronger.keys():
+        return False
+    for key, amount in weaker.items():
+        if stronger[key] < amount:
+            return False
+    return True
 
 
 def dnf_or(*alternatives: list) -> list:
@@ -502,6 +509,10 @@ def dnf_or(*alternatives: list) -> list:
 def dnf_and(a: list, b: list) -> list:
     if not a or not b:
         return FALSE
+    if a == TRUE:
+        return b
+    if b == TRUE:
+        return a
     merged = []
     for x in a:
         for y in b:
@@ -675,36 +686,42 @@ class EscapeSolver:
         for y in sorted(inlined):
             for s in self.logic["EVENTS"][y]["sources"]:
                 sources[tuple(s["node"])].append((y, s["requirement"]))
-        users = collections.defaultdict(list)  # inlined event -> connections whose requirement uses it
-        static_cache: dict[int, list] = {}
-        dynamic: set[int] = set()
+        event_users = collections.defaultdict(list)
+        connection_users = collections.defaultdict(list)
+        dependencies: dict[int, tuple[str, ...]] = {}
+        req_cache: dict[int, tuple[tuple[int, ...], list]] = {}
+        revisions: collections.Counter = collections.Counter()
+
+        def index_requirement(req: dict) -> tuple[str, ...]:
+            key = id(req)
+            if key not in dependencies:
+                dependencies[key] = tuple(sorted(n for k, n, neg in requirement_atoms(req, self.templates)
+                                                if k == "event" and not neg and n in inlined))
+            return dependencies[key]
+
         for conns in self.out.values():
             for conn in conns:
-                used = {n for k, n, neg in requirement_atoms(conn["requirement"], self.templates)
-                        if k == "event" and not neg and n in inlined}
-                for y in used:
-                    users[y].append(conn)
-                if used:
-                    dynamic.add(id(conn["requirement"]))
-        for _, reqs in sources.items():
-            for _, r in reqs:
-                if any(k == "event" and not neg and n in inlined for k, n, neg in requirement_atoms(r, self.templates)):
-                    dynamic.add(id(r))
+                for y in index_requirement(conn["requirement"]):
+                    connection_users[y].append(conn)
+        for n, reqs in sources.items():
+            for z, req in reqs:
+                for y in index_requirement(req):
+                    event_users[y].append((n, z, req))
 
         def req_dnf(req: dict) -> list:
             key = id(req)
-            if key in dynamic:
-                return self.to_dnf(req, triggered, inlined, ev_dnf, assumed)
-            if key not in static_cache:
-                static_cache[key] = self.to_dnf(req, triggered, inlined, ev_dnf, assumed)
-            return static_cache[key]
+            version = tuple(revisions[y] for y in dependencies[key])
+            cached = req_cache.get(key)
+            if cached is None or cached[0] != version:
+                cached = req_cache[key] = (version, self.to_dnf(req, triggered, inlined, ev_dnf, assumed))
+            return cached[1]
 
         queue = [node] if base is None else []
-        changed_events: list[str] = []
+        changed_events: dict[str, None] = {}
 
         def add_node(to: tuple, gain: list) -> None:
             old = reach.get(to, FALSE)
-            added = [t for t in dnf_or(gain) if not any(_implies(t, o) for o in old)]
+            added = [t for t in gain if not any(_implies(t, o) for o in old)]
             if not added:
                 return
             reach[to] = dnf_or(old, added)
@@ -716,7 +733,8 @@ class EscapeSolver:
             if all(any(_implies(t, o) for o in old) for t in gain):
                 return
             ev_dnf[y] = dnf_or(old, gain)
-            changed_events.append(y)
+            revisions[y] += 1
+            changed_events[y] = None
 
         if base is not None:
             def asks_for_trick(req: dict) -> bool:
@@ -754,20 +772,18 @@ class EscapeSolver:
                     if gain:
                         add_node(tuple(conn["to"]), gain)
             while changed_events:
-                y = changed_events.pop()
-                for conn in users[y]:
+                y, _ = changed_events.popitem()
+                for conn in connection_users[y]:
                     frm = tuple(conn["from"])
                     if frm in reach and not (frm in target_nodes and frm != node):
                         gain = dnf_and(reach[frm], req_dnf(conn["requirement"]))
                         if gain:
                             add_node(tuple(conn["to"]), gain)
-                for n, reqs in sources.items():
+                for n, z, req in event_users[y]:
                     if n in reach:
-                        for z, r in reqs:
-                            if id(r) in dynamic:
-                                gain = dnf_and(reach[n], req_dnf(r))
-                                if gain:
-                                    add_event(z, gain)
+                        gain = dnf_and(reach[n], req_dnf(req))
+                        if gain:
+                            add_event(z, gain)
         return reach, ev_dnf
 
 
@@ -817,6 +833,172 @@ def attach_escape_requirements(files: dict[str, dict]) -> None:
                 conn["escape_gate"] = x
 
 
+# ---------------------------------------------------------------- re-entry requirements (E24)
+def gate_base(conn: dict) -> dict:
+    """The database requirement of a connection, without the E18/E24 gate."""
+    return conn["requirement"]["and"][0] if conn.get("escape_gate") else conn["requirement"]
+
+
+def before_endpoints(logic: dict, x: str) -> list[tuple]:
+    """Targets of the connections whose database requirement asks for "before <x>", sorted."""
+    ends = set()
+    for conn in logic["CONNECTIONS"]:
+        if any(k == "event" and n == x and neg for k, n, neg in requirement_atoms(gate_base(conn), logic["TEMPLATES"])):
+            ends.add(tuple(conn["to"]))
+    return sorted(ends)
+
+
+def attach_reentry_requirements(files: dict[str, dict]) -> dict[int, tuple[list, list[str]]]:
+    """E24: the way back in after a dangerous event. The logic counts "before X" as satisfied, so it keeps using the
+    connections that only exist before X. For every such connection the converter compares the cost of its target b
+    before and after X (forward DNF from the start, every event inlined, the E18 gates in place):
+        before(b): normal logic ("before X" satisfied), after(b): X has happened ("before X" false, X reached).
+    - ``lost``: b is unreachable after X even with every item and every trick (TRICK_COVERAGE). Nothing is gated;
+      the converter checks that no location node is lost after X (else it raises).
+    - ``safe``: before(b) with every trick implies after(b) without tricks, so for every trick setting the way back
+      in costs nothing new. Nothing is gated.
+    - ``gated``: without tricks, before(b) does not imply after(b) (Vaccine re-entry, T30/T36). after(b) without
+      tricks is ANDed into ``reentry_requirement``, which is added as a third part to every connection into X's node:
+      the logic only triggers X once the way back to b holds (stricter than needed for a player who never wants b).
+    - ``location``: like ``gated``, but b is the pickup node of a location. Then the location's own rule gets
+      after(b) instead (returned, ANDed by attach_location_escapes): the logic only expects the location once it is
+      reachable even after X, and X itself stays free (Flux Control Tunnel Cover, T36).
+    - ``tricks_only``: without tricks the way back costs nothing new, with some trick setting it does. Not gated
+      (it would make the default logic stricter for nothing); listed in ``reentry_endpoints`` and data/README.md.
+    ``reentry_endpoints`` = {class: [nodes]} for the classes that are not empty, on every dangerous event that has one.
+    Returns {location id: (after DNF, [events])} for the ``location`` class.
+    """
+    logic, game = files["logic.py"], files["game.py"]
+    settings, start = game["SETTINGS"], tuple(game["START_LOCATION"])
+    coverage = trick_coverage(game)
+    damage = settings["damage"]
+    every = set(logic["EVENTS"])
+    for name, ev in logic["EVENTS"].items():
+        for src in ev["sources"]:
+            negated = {n for k, n, neg in requirement_atoms(src["requirement"], logic["TEMPLATES"]) if k == "event" and neg}
+            if negated:
+                raise ValueError(f"event {name!r}: 'before' {sorted(negated)} in an event source is not supported (E24)")
+    location_nodes = {loc["id"]: (loc["region"], loc["area"], loc["node"]) for loc in files["locations.py"]["LOCATIONS"]}
+    location_of = {node: lid for lid, node in location_nodes.items()}
+    for_locations: dict[int, tuple[list, list[str]]] = {}
+    plain = EscapeSolver(logic, settings)
+    before, before_ev = plain.reach_dnf(start, frozenset(), every, stop_at_ships=False)
+    before_t, _ = EscapeSolver(logic, settings, tricks=coverage).reach_dnf(
+        start, frozenset(), every, stop_at_ships=False, base=(before, before_ev))
+    all_inv = _simulator_world(files).all_items()
+    gates = {}
+    for x in sorted(name for name, ev in logic["EVENTS"].items() if "escape_requirement" in ev):
+        done = frozenset({x}) | forced_escape_events(files, x)
+        after_files = _after_event_files(files, x, done)
+        w_after = _simulator_world(after_files)
+        reached_t, _, _, _ = _simulator_world(after_files, tricks=coverage).reach(all_inv, events=done)
+        lost_locations = sorted(lid for lid, n in location_nodes.items() if n not in reached_t)
+        if lost_locations:
+            raise ValueError(f"locations {lost_locations} are unreachable after {x!r} even with every item and trick: "
+                             f"they are missable and need a decision (E24)")
+
+        def holds_after(terms: list, b: tuple) -> bool:
+            """Every inventory of ``terms`` reaches ``b`` after X without tricks, i.e. ``terms`` implies after(b)."""
+            return all(b in w_after.reach(_term_inventory(t, {}, damage), events=done)[0] for t in terms)
+
+        after = None
+        classes: dict[str, list] = {"gated": [], "location": [], "tricks_only": [], "lost": []}
+        reentry = TRUE
+        for b in before_endpoints(logic, x):
+            if b not in reached_t:
+                classes["lost"].append(b)
+                continue
+            if holds_after(before_t.get(b, FALSE), b):
+                continue
+            if holds_after(before.get(b, FALSE), b):
+                classes["tricks_only"].append(b)
+                continue
+            if after is None:  # forward DNF after X: X's own gate gone, X and the forced events reached
+                stripped = dict(logic, CONNECTIONS=[dict(c, requirement=gate_base(c)) if c.get("escape_gate") == x
+                                                    else c for c in logic["CONNECTIONS"]])
+                after, _ = EscapeSolver(stripped, settings).reach_dnf(start, done, every - done, stop_at_ships=False,
+                                                                      assumed=done)
+            behind = [tuple(c["to"]) for c in plain.out.get(b, ())]
+            if b in location_of and all(holds_after(before.get(t, FALSE), t) for t in behind):
+                # nothing behind the pickup node gets more expensive: the location rule is enough
+                classes["location"].append(b)
+                lid = location_of[b]
+                dnf, names = for_locations.get(lid, (TRUE, []))
+                for_locations[lid] = (dnf_and(dnf, after.get(b, FALSE)), names + [x])
+            else:
+                classes["gated"].append(b)
+                reentry = dnf_and(reentry, after.get(b, FALSE))
+        if not reentry:
+            raise ValueError(f"{x!r}: the way back in is impossible without tricks, so the event could never happen")
+        event = logic["EVENTS"][x]
+        if done != {x}:
+            event["reentry_assumed_events"] = sorted(done - {x})
+        if any(classes.values()):
+            event["reentry_endpoints"] = {k: v for k, v in classes.items() if v}
+        if reentry != TRUE:
+            gates[x] = event["reentry_requirement"] = dnf_to_requirement(reentry)
+    for conn in logic["CONNECTIONS"]:
+        if conn.get("escape_gate") in gates:
+            conn["requirement"] = {"and": conn["requirement"]["and"] + [gates[conn["escape_gate"]]]}
+    return for_locations
+
+
+def _substitute_events(req: dict, done: frozenset) -> dict:
+    """``req`` in the state after the events ``done``: "before Y" never holds and event Y always does."""
+    if "and" in req:
+        return {"and": [_substitute_events(r, done) for r in req["and"]]}
+    if "or" in req:
+        return {"or": [_substitute_events(r, done) for r in req["or"]]}
+    if req["type"] == "event" and req["name"] in done:
+        return {"or": []} if req.get("negate") else {"and": []}
+    return req
+
+
+def _after_event_files(files: dict[str, dict], x: str, done: frozenset) -> dict[str, dict]:
+    """The generated data in the state after the events ``done`` (``x`` among them), X's own gate gone (X has
+    happened). For the simulator World (E24)."""
+    logic = files["logic.py"]
+    conns = []
+    for conn in logic["CONNECTIONS"]:
+        if conn.get("escape_gate") == x:
+            conn = {k: v for k, v in conn.items() if k != "escape_gate"} | {"requirement": gate_base(conn)}
+        conns.append(dict(conn, requirement=_substitute_events(conn["requirement"], done)))
+    unlock_keys = ("is_unlocked", "requirement_to_activate")
+    regions = {r: {"areas": {a: {"nodes": {n: {k: _substitute_events(v, done) if k in unlock_keys else v
+                                                for k, v in info.items()}
+                                            for n, info in area["nodes"].items()}}
+                             for a, area in region["areas"].items()}}
+               for r, region in logic["REGIONS"].items()}
+    events = {name: dict(ev, sources=[dict(s, requirement=_substitute_events(s["requirement"], done))
+                                      for s in ev["sources"]])
+              for name, ev in logic["EVENTS"].items()}
+    new_logic = dict(logic, REGIONS=regions, CONNECTIONS=conns, EVENTS=events,
+                     TEMPLATES={k: _substitute_events(v, done) for k, v in logic["TEMPLATES"].items()})
+    return dict(files, **{"logic.py": new_logic})
+
+
+def forced_escape_events(files: dict[str, dict], x: str) -> frozenset:
+    """E24: the events that every way from X's node to a ship triggers after X, even with every item and every trick
+    (TRICK_COVERAGE). The player has them once he is out (e.g. both Xenoresearch Seeker Gates after the Power
+    Outage), so the way back in may use them."""
+    logic = files["logic.py"]
+    node = tuple(logic["EVENTS"][x]["node"])
+    w = _simulator_world(_after_event_files(files, x, frozenset({x})), tricks=trick_coverage(files["game.py"]))
+    inv = w.all_items()
+    ships = {n for n, _ in w.ships}
+    local, _, _, _ = w.reach(inv, start=[node], events={x}, blocked_nodes=ships - {node})
+    candidates = sorted(name for name, ev in logic["EVENTS"].items()
+                        if name != x and any(tuple(s["node"]) in local for s in ev["sources"]))
+    forced = set()
+    for y in candidates:
+        ev = logic["EVENTS"][y]
+        blocked = {tuple(s["node"]) for s in ev["sources"]} if ev["kind"] == "db" else set()
+        reached, evs, _, _ = w.reach(inv, start=[node], events={x}, blocked_events={y}, blocked_nodes=blocked)
+        if not any(n in reached and fn(inv, evs, False) for n, fn in w.ships):
+            forced.add(y)
+    return frozenset(forced)
+
+
 # ---------------------------------------------------------------- escape requirements of pickup nodes (E22)
 def _term_inventory(term: dict, base: dict[str, int], damage: dict) -> dict[str, int]:
     """Smallest inventory (resource amounts) satisfying an item-only DNF term: ``base`` plus the term's item atoms;
@@ -838,7 +1020,8 @@ def _term_inventory(term: dict, base: dict[str, int], damage: dict) -> dict[str,
     return inv
 
 
-def attach_location_escapes(files: dict[str, dict]) -> list[int]:
+def attach_location_escapes(files: dict[str, dict], reentry: dict[int, tuple[list, list[str]]] | None = None
+                            ) -> list[int]:
     """E22: escape_requirement of every pickup node (location 1-99), stored in LOCATIONS. Returns the ids of the
     locations whose escape_requirement is not trivially satisfied.
 
@@ -914,6 +1097,8 @@ def attach_location_escapes(files: dict[str, dict]) -> list[int]:
             raise ValueError(f"location {lid}: events both triggered on the way and only reachable after it: "
                              f"{sorted(inlined & triggered[lid])}")
         dnf = solver.solve(frozenset(triggered[lid]), node, inlined, assumed=frozenset(assumed[lid]))
+        if lid in (reentry or {}):  # E24: the way to the pickup node after a dangerous event
+            dnf = dnf_and(dnf, reentry[lid][0])
         if not dnf:
             raise ValueError(f"location {lid} {loc['name']!r}: no way back to a ship even with all items")
         if dnf == TRUE or implied_by_entry(node, dnf):
@@ -924,7 +1109,27 @@ def attach_location_escapes(files: dict[str, dict]) -> list[int]:
         loc["escape_triggered_events"] = sorted(triggered[lid])
         loc["escape_assumed_events"] = sorted(assumed[lid])
         loc["escape_inlined_events"] = sorted(inlined)
+        if lid in (reentry or {}):
+            loc["reentry_events"] = sorted(reentry[lid][1])
     return nontrivial
+
+
+def mark_after_goal_locations(files: dict[str, dict]) -> list[int]:
+    """E24 (T36): ``"missable": "after_goal"`` on every location the logic reaches only after the goal event, even
+    with every item and every trick (TRICK_COVERAGE). The database lets the player into G.F.S. Olympus from the
+    gunship only after Aurora Unit 313 (start Valhalla), while the game lets him in once before (Olympus intro) and
+    never again once he leaves. The APWorld should place only filler there (excluded locations). Returns the ids."""
+    victory = files["game.py"]["VICTORY_REQUIREMENT"]
+    if victory.get("type") != "event" or victory.get("negate"):
+        raise ValueError(f"the victory requirement must be a single event: {victory}")
+    world_t = _simulator_world(files, tricks=trick_coverage(files["game.py"]))
+    reached, _, _, _ = world_t.reach(world_t.all_items(), blocked_events={victory["name"]})
+    marked = []
+    for loc in files["locations.py"]["LOCATIONS"]:
+        if (loc["region"], loc["area"], loc["node"]) not in reached:
+            loc["missable"] = "after_goal"
+            marked.append(loc["id"])
+    return marked
 
 
 # ---------------------------------------------------------------- trick report (E23)

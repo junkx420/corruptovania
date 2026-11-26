@@ -22,7 +22,7 @@ from ..rules import ALWAYS, NEVER, RuleCompiler, StaticState
 from . import MP3TestBase, load_playthrough_sim
 
 # Locations whose rule is not implied by reaching their node with the default starting items and no tricks (T25).
-DEFAULT_RULE_LOCATIONS = {26, 28, 29, 35, 56, 57, 58, 59, 60, 61, 62, 63, 64, 75, 76, 84, 86, 94, 95, 97, 98, 99}
+DEFAULT_RULE_LOCATIONS = {26, 28, 29, 35, 56, 57, 58, 59, 60, 61, 62, 63, 64, 75, 76, 84, 86, 91, 94, 95, 97, 98, 99}
 
 
 def multiworld_with_tricks(tricks: dict, seed: int | None = None) -> MultiWorld:

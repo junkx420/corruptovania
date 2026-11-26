@@ -97,6 +97,7 @@ class World:
 
         self.dangerous = {name: tuple(ev["node"]) for name, ev in logic.EVENTS.items() if "escape_requirement" in ev}
         self.dangerous_node = {node: name for name, node in self.dangerous.items()}
+        self._gates: dict[str, object] = {}
 
         # connections: (from, to, logic_fn, logic_deps, phys_fn, phys_deps)
         self.out: dict[tuple, list[int]] = collections.defaultdict(list)
@@ -249,7 +250,7 @@ class World:
               copies: collections.Counter | None = None):
         """Least fixpoint of reachable nodes and events.
 
-        ``gated`` (default: = ``logic``): use the escape gates on connections into dangerous event nodes.
+        ``gated`` (default: = ``logic``): use the escape and re-entry gates on connections into dangerous event nodes.
         ``logic=True, gated=False`` is the logic as it was before E18 (used by the converter and for analyses).
 
         ``placement`` (location id -> item record): items at reached locations are collected on the way (sweep),
@@ -349,8 +350,13 @@ class World:
         return any(n in reached and fn(inv, evs, True) for n, fn in self.ships)
 
     def escape_ok(self, event: str, inv: dict, evs) -> bool:
-        """The escape gate of a dangerous event, evaluated like the AP logic does."""
-        fn, _ = self.compile(self.data.logic.EVENTS[event]["escape_requirement"])
+        """The gate of a dangerous event (E18 escape_requirement and, if present, the E24 reentry_requirement),
+        evaluated like the AP logic does."""
+        fn = self._gates.get(event)
+        if fn is None:
+            ev = self.data.logic.EVENTS[event]
+            parts = [ev["escape_requirement"]] + ([ev["reentry_requirement"]] if "reentry_requirement" in ev else [])
+            fn = self._gates[event] = self.compile({"and": parts})[0]
         return fn(inv, evs, False)
 
 
@@ -542,7 +548,8 @@ def main() -> None:
     parser.add_argument("--tricks", default="", help='trick levels, e.g. "Movement=2,Knowledge=1"')
     parser.add_argument("--trick-level", type=int, help="the same level for every trick")
     parser.add_argument("--usable", action="store_true", help="USABLE_TRICKS of data/tricks.py")
-    parser.add_argument("--matrix", action="store_true", help="run the check matrix (eager 0.5 unless --eager)")
+    parser.add_argument("--matrix", action="store_true",
+                        help="run the check matrix (eager 0.5; fill failures allowed with only fixed starting items)")
     parser.add_argument("--start-table", action="store_true", help="sphere 0 for every starting-item choice")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
@@ -558,8 +565,11 @@ def main() -> None:
             t0 = time.time()
             result = run_variant(data, kwargs, seeds, eager=0.5 if args.eager is None else args.eager)
             summary = result["summary"]
-            ok = bool(result["sphere0"]) and summary.get("won") == len(seeds) and summary.get("trapped") == 0                 and summary.get("all_99_collected") == len(seeds)
-            failed |= bool(result["sphere0"]) and not ok
+            filled = summary.get("seeds", 0)
+            minimal_start = kwargs.get("starting_items") == list(FIXED_STARTING_ITEMS)
+            ok = (bool(result["sphere0"]) and filled > 0 and (minimal_start or filled == len(seeds))
+                  and summary["won"] == summary["all_99_collected"] == filled and summary["trapped"] == 0)
+            failed |= not ok
             print(f"{label:40} sphere 0: {len(result['sphere0']):>2}  {summary}  {time.time() - t0:.0f}s", flush=True)
         sys.exit(1 if failed else 0)
     tricks = {t: args.trick_level for t in data.game.TRICKS} if args.trick_level is not None else {}

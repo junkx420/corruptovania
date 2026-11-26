@@ -1,4 +1,4 @@
-"""Acceptance tests for apworld/tools/convert_db.py (T03, T20, T25, T30) and apworld/tools/playthrough_sim.py.
+"""Acceptance tests for apworld/tools/convert_db.py (T03, T20, T25, T30, T36) and apworld/tools/playthrough_sim.py.
 
 Run from the repo root:
     venv/Scripts/python.exe -m pytest apworld/tools/test_convert_db.py -s
@@ -326,8 +326,9 @@ def test_every_dangerous_event_has_an_escape_requirement_and_gates_its_node(data
         assert conn.get("escape_gate") == into, conn
         if into is not None:
             req = conn["requirement"]
-            assert set(req) == {"and"} and len(req["and"]) == 2
-            assert req["and"][1] == events[into]["escape_requirement"]
+            reentry = [events[into]["reentry_requirement"]] if "reentry_requirement" in events[into] else []
+            assert set(req) == {"and"} and len(req["and"]) == 2 + len(reentry)
+            assert req["and"][1:] == [events[into]["escape_requirement"]] + reentry
             gated[into] += 1
     assert set(gated) == dangerous, "every dangerous event node must have at least one gated connection"
 
@@ -417,9 +418,10 @@ def test_escape_control_values(world):
             assert fixes == [missing], f"{event}: with minimal items the escape needs {fixes}, expected {missing}"
         assert trapped, f"{event}: no minimal entry inventory is trapped"
     for event in NO_TRAP:
+        escape, _ = world.compile(world.data.logic.EVENTS[event]["escape_requirement"])
         for inv in _minimal_entry_inventories(world, event):
             enter, events = _entry_state(world, event, inv)
-            assert enter and world.escape_ok(event, inv, events), f"{event} must not be a trap"
+            assert enter and escape(inv, events, False), f"{event} must not be a trap"
     # Flux Control Tunnel Cover: Spider Ball or X-Ray Visor
     event = "Flux Control Tunnel Cover"
     full = world.all_items()
@@ -529,15 +531,15 @@ SEED_ESCAPES = {
     99: ({"Hyper Grapple": 1, "Grapple Voltage": 1, "Grapple Lasso": 1}, "Hyper Grapple"),
 }
 # Locations whose escape_requirement is not implied by reaching them with the default starting items and no tricks
-# (T25, documented in data/README.md): only these can behave differently from "no rule" in the default setup.
-DEFAULT_NONTRIVIAL_LOCATION_ESCAPES = [26, 28, 29, 35, 56, 57, 58, 59, 60, 61, 62, 63, 64, 75, 76, 84, 86, 94, 95, 97,
-                                       98, 99]
+# (T25 plus T36's re-entry at 91, documented in data/README.md).
+DEFAULT_NONTRIVIAL_LOCATION_ESCAPES = [26, 28, 29, 35, 56, 57, 58, 59, 60, 61, 62, 63, 64, 75, 76, 84, 86, 91, 94, 95,
+                                       97, 98, 99]
 # Every location whose escape_requirement is stored: not implied by reaching the node for some starting inventory or
-# some trick setting up to TRICK_COVERAGE (T30).
+# some trick setting up to TRICK_COVERAGE (T30, T36).
 NONTRIVIAL_LOCATION_ESCAPES = [2, 3, 12, 14, 15, 17, 18, 19, 20, 21, 22, 23, 24, 26, 28, 29, 31, 32, 33, 34, 35, 37,
                                38, 39, 40, 42, 44, 45, 46, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
-                               68, 69, 70, 71, 72, 74, 75, 76, 77, 78, 79, 80, 81, 83, 84, 85, 86, 87, 90, 93, 94, 95,
-                               96, 97, 98, 99]
+                               68, 69, 70, 71, 72, 74, 75, 76, 77, 78, 79, 80, 81, 83, 84, 85, 86, 87, 90, 91, 93, 94,
+                               95, 96, 97, 98, 99]
 # Locations whose escape needs their own vanilla item: that item can no longer be placed there (accepted, E22).
 SELF_LOCKED_VANILLA = {63: "Boost Ball", 64: "Spider Ball", 76: "Hazard Shield", 95: "Nova Beam",
                        97: "Hyper Missile", 98: "Hyper Ball", 99: "Hyper Grapple"}
@@ -601,9 +603,9 @@ def test_starting_items_are_normal_item_leaves(data, world):
             and not world.location_ok(lid, inv, events)] == [15]
 
 
-def test_default_setup_keeps_the_t25_rules(data, world):
-    """With the default starting items and no tricks the location rules behave exactly as in T25: only the 22 T25
-    locations have a rule that is not implied by reaching their node (exact check over the minimal entry sets)."""
+def test_default_setup_location_rules(data, world):
+    """With default starting items and no tricks, the 22 T25 locations and location 91 have rules that are not
+    implied by reaching their node (exact check over the minimal entry sets)."""
     convert_db = _load(CONVERTER)
     logic = {k: getattr(data.logic, k) for k in ("REGIONS", "CONNECTIONS", "EVENTS", "TEMPLATES")}
     start_inv, _ = world.inventory(data.items.STARTING_ITEMS)
@@ -815,15 +817,6 @@ def test_simulator_starting_items_keep_the_pool_at_99(data):
 MATRIX_SEEDS = range(40)  # data/README.md has seeds 0-99 (CLI --matrix); the test keeps the run short
 
 
-def _known_vaccine_reentry(result: dict) -> bool:
-    """The E18 limitation found by the check matrix (data/README.md): after "Aurora Chamber (Elysia) Vaccine" the
-    Main Docking Bay door needs Plasma Beam + Ghor, while the logic still counts "before Vaccine" as satisfied, so
-    the rest of SkyTown, Elysia - Main can be out of reach. The player is never trapped."""
-    elysia_main = set(range(53, 66))
-    return ("Aurora Chamber (Elysia) Vaccine" in result["triggered"] and not result["trapped"]
-            and bool(elysia_main & set(result["missing"])))
-
-
 def test_start_table_never_empty(data):
     rows = playthrough_sim.start_table(data)
     assert len(rows) == 16
@@ -836,13 +829,13 @@ def test_start_table_never_empty(data):
                                      "without Charge Beam", "only Power Beam + Combat/Scan Visor",
                                      "usable tricks at the recommended level"])
 def test_check_matrix(data, variant, capsys):
-    """Fill + logic-following player per setup (E23): every filled seed is won with 99/99 locations, or (rarely)
-    hits the known Vaccine re-entry limitation; the player is never trapped."""
+    """Fill + logic-following player per setup (E23): every filled seed is won with 99/99 locations (the Vaccine
+    re-entry of T30 is closed by E24); the player is never trapped."""
     kwargs = dict(playthrough_sim.matrix_variants(data))[variant]
     seeds = MATRIX_SEEDS if variant != "only Power Beam + Combat/Scan Visor" else range(20)
     world = playthrough_sim.World(data, **kwargs)
     assert world.sphere0()
-    won = vaccine = fill_failed = 0
+    won = fill_failed = 0
     for seed in seeds:
         rng = random.Random(seed)
         placement = playthrough_sim.fill(world, rng)
@@ -851,19 +844,99 @@ def test_check_matrix(data, variant, capsys):
             continue
         result = playthrough_sim.play(world, placement, rng, 0.5)
         assert not result["trapped"], (seed, result["end"])
-        if result["won"]:
-            assert result["collected"] == 99, (seed, result["missing"])
-            won += 1
-        else:
-            assert _known_vaccine_reentry(result), (seed, result)
-            vaccine += 1
+        assert result["won"] and result["collected"] == 99, (seed, result)
+        won += 1
     with capsys.disabled():
-        print(f"\n{variant}: won {won}, Vaccine re-entry {vaccine}, fill failed {fill_failed} of {len(seeds)}")
-    assert vaccine <= len(seeds) // 20
+        print(f"\n{variant}: won {won}, fill failed {fill_failed} of {len(seeds)}")
     if variant != "only Power Beam + Combat/Scan Visor":
         assert fill_failed == 0
     else:
         assert won > 0
+
+
+# ---------------------------------------------------------------- 7d. re-entry and missable locations (E24, T36)
+# Without tricks the way back in gets more expensive after exactly these events (data/README.md "Missable locations").
+REENTRY_GATED = {"Aurora Chamber (Elysia) Vaccine":
+                 [("SkyTown, Elysia - Main", "Main Docking Bay", "Door to Main Docking Access")]}
+# Ghor needs Hypermode (Energy Tank + HyperModeTank); the Main Docking Bay door after the Vaccine needs Ghor + Plasma.
+VACCINE_REENTRY = {"Energy Tank": 1, "HyperModeTank": 1, "Plasma Beam": 1}
+REENTRY_LOCATIONS = {91: ["Flux Control Tunnel Cover"]}  # Flux Control Missile Expansion: Grapple Lasso after it
+AFTER_GOAL_LOCATIONS = [1, 2]  # G.F.S. Olympus: in from the gunship only after Aurora Unit 313
+
+
+def _files(data: Data) -> dict[str, dict]:
+    return {f"{m}.py": {k: v for k, v in vars(getattr(data, m)).items() if k.isupper()}
+            for m in ("logic", "game", "items", "locations")}
+
+
+def test_reentry_control_values(data, world):
+    events = data.logic.EVENTS
+    gated = {x: ev["reentry_endpoints"]["gated"] for x, ev in events.items() if "gated" in ev.get("reentry_endpoints", {})}
+    assert {x: [tuple(n) for n in nodes] for x, nodes in gated.items()} == REENTRY_GATED
+    assert {x for x, ev in events.items() if "reentry_requirement" in ev} == set(REENTRY_GATED)
+    vaccine = events["Aurora Chamber (Elysia) Vaccine"]["reentry_requirement"]
+    assert {r["name"]: r["amount"] for r in vaccine["and"]} == VACCINE_REENTRY
+    for conn in data.logic.CONNECTIONS:
+        if conn.get("escape_gate") in REENTRY_GATED:
+            assert conn["requirement"]["and"][2] == events[conn["escape_gate"]]["reentry_requirement"]
+    assert {loc["id"]: loc["reentry_events"] for loc in data.locations.LOCATIONS if "reentry_events" in loc} \
+        == REENTRY_LOCATIONS
+    without_lasso = {**world.all_items(), "Grapple Lasso": 0}
+    reached, reached_events, _, _ = world.reach(without_lasso)
+    assert world.loc_node[91] in reached and not world.location_ok(91, without_lasso, reached_events)
+    convert_db = _load(CONVERTER)
+    cover, = REENTRY_LOCATIONS[91]
+    cover_opened = frozenset({cover})
+    after_cover = convert_db._simulator_world(convert_db._after_event_files(_files(data), cover, cover_opened))
+    for inv, accessible in ((without_lasso, False), (world.all_items(), True)):
+        assert (world.loc_node[91] in after_cover.reach(inv, events=cover_opened)[0]) is accessible
+    # both Xenoresearch Seeker Gates are opened on every way out after the Power Outage
+    assert events["Xenoresearch Power Outage"]["reentry_assumed_events"] == ["Xenoresearch A Seeker Gate",
+                                                                             "Xenoresearch B Seeker Gate"]
+
+
+def _lost_after_events(world, convert_db, data, gated: bool) -> dict[str, list[int]]:
+    """For every dangerous event X and sample inventories that let the logic into X's node: the locations the logic
+    allows with that inventory but that are out of reach (from the start, no tricks) once X has happened."""
+    files = _files(data)
+    lost: dict[str, list[int]] = {}
+    inventories = _inventories(world, 12, 5)
+    for x in sorted(world.dangerous):
+        done = frozenset({x}) | frozenset(data.logic.EVENTS[x].get("reentry_assumed_events", []))
+        after = convert_db._simulator_world(convert_db._after_event_files(files, x, done))
+        for inv in inventories:
+            reached, events, _, _ = world.reach(inv, gated=gated)
+            if world.dangerous[x] not in reached:
+                continue
+            expected = {lid for lid in world.reachable_locations(reached) if world.location_ok(lid, inv, events)}
+            after_reached = after.reach(inv, events=done)[0]
+            missing = sorted(lid for lid in expected if world.loc_node[lid] not in after_reached)
+            if missing:
+                lost.setdefault(x, []).extend(m for m in missing if m not in lost.get(x, []))
+    return lost
+
+
+def test_no_location_is_lost_after_a_dangerous_event(data, world):
+    """Independent of the converter's DNFs (simulator, sample inventories, default setup): once the logic lets the
+    player trigger a dangerous event, everything it allowed before stays reachable afterwards from the ship network.
+    Without the gates the Vaccine re-entry shows up (control)."""
+    convert_db = _load(CONVERTER)
+    assert _lost_after_events(world, convert_db, data, gated=True) == {}
+    without_gates = _lost_after_events(world, convert_db, data, gated=False)
+    assert set(range(53, 66)) & set(without_gates.get("Aurora Chamber (Elysia) Vaccine", []))
+
+
+def test_after_goal_locations(data):
+    """Olympus (E24): the logic reaches locations 1 and 2 only after the goal, even with every item and trick; they
+    are flagged ``missable: after_goal`` (the APWorld should place only filler there)."""
+    assert [(loc["id"], loc["missable"]) for loc in data.locations.LOCATIONS if "missable" in loc] \
+        == [(lid, "after_goal") for lid in AFTER_GOAL_LOCATIONS]
+    world_t = playthrough_sim.World(data, tricks={t: 5 for t in data.game.TRICKS})
+    full = world_t.all_items()
+    before_goal, _, _, _ = world_t.reach(full, blocked_events={GOAL_EVENT})
+    after_goal, _, _, _ = world_t.reach(full)
+    assert [lid for lid, node in sorted(world_t.loc_node.items()) if node not in before_goal] == AFTER_GOAL_LOCATIONS
+    assert all(world_t.loc_node[lid] in after_goal for lid in AFTER_GOAL_LOCATIONS)
 
 
 # ---------------------------------------------------------------- 8. no randovania import
