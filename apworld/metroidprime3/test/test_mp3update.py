@@ -1,4 +1,4 @@
-"""T34 regression tests for NTSC-U builds from Open Patch."""
+"""Regional patch options in Open Patch and the standalone CLI."""
 
 import struct
 from pathlib import Path
@@ -10,8 +10,10 @@ import settings
 from worlds import metroidprime3
 
 from .. import open_patch
-from ..patcher import build, patch_data, seed_id, tools
+from ..patcher import build, cli, patch_data, seed_id, tools
 from ..settings import MP3Settings
+
+PAL_FILTER_OFFSETS = (0x5A46EA, 0x5A4762, 0x5A479E, 0x5A47DA)
 
 
 @pytest.fixture
@@ -52,10 +54,13 @@ def open_patch_build(tmp_path, monkeypatch):
                 (files / name).write_bytes(name.encode())
             version = seed_id.version_for_game_id(game_id)
             (extract / "sys").mkdir()
-            dol = bytearray(512)
+            dol = bytearray(PAL_FILTER_OFFSETS[-1] + 7 if game_id == "RM3P01" else 512)
             for offset, value in ((0x00, 256), (0x48, version.build_string_address), (0x90, 256)):
                 struct.pack_into(">I", dol, offset, value)
             dol[256 : 256 + len(version.build_string)] = version.build_string
+            if game_id == "RM3P01":
+                for offset in PAL_FILTER_OFFSETS:
+                    dol[offset : offset + 7] = bytes.fromhex("08 08 0A 0C 0A 08 08")
             (extract / "sys" / "main.dol").write_bytes(dol)
         elif program == "hpatchz.exe":
             target = Path(command[2])
@@ -99,20 +104,57 @@ def test_ntsc_open_patch_applies_both_unless_disabled(open_patch_build, enabled)
     assert output.read_bytes() != first_build
 
 
-def test_pal_ignores_mp3update_and_keeps_six_steps(open_patch_build):
+def test_pal_open_patch_only_changes_the_four_filters(open_patch_build):
     test = open_patch_build
     test.original.write_bytes(b"RM3P01")
+    (test.tool_folder / "hpatchz.exe").unlink()
+    (test.tool_folder / "MP3Update" / "main.hdiff").unlink()
     output, _ = open_patch.make_iso(test.container)
     pal_default = output.read_bytes()
-    assert test.steps[2] == "[3/6] Copying paks..."
-    assert test.steps[-1] == "[6/6] Building ISO..."
+    assert test.steps[2] == "[3/7] Applying Deflicker..."
+    assert test.steps[-1] == "[7/7] Building ISO..."
 
-    output.unlink()
+    test.commands.clear()
+    open_patch.make_iso(test.container)
+    assert not test.commands
+
+    test.steps.clear()
     test.options.update({"mp3update": False})
     open_patch.make_iso(test.container)
-    assert output.read_bytes() == pal_default
+    assert test.steps[2] == "[3/6] Copying paks..."
+    assert test.steps[-1] == "[6/6] Building ISO..."
+    expected = bytearray(output.read_bytes())
+    for offset in PAL_FILTER_OFFSETS:
+        start = 6 + offset  # Disc header prepended by the fake ISO builder.
+        assert expected[start : start + 7] == bytes.fromhex("08 08 0A 0C 0A 08 08")
+        expected[start : start + 7] = bytes.fromhex("00 00 15 16 15 00 00")
+    assert pal_default == expected
     assert all(Path(cmd[0]).name != "hpatchz.exe" for cmd in test.commands)
-    assert not output.with_suffix(".iso.mp3update").exists()
+
+    test.options.update({"mp3update": True})
+    open_patch.make_iso(test.container)
+    assert output.read_bytes() == pal_default
+
+    output.with_suffix(".iso.mp3update").unlink()  # An ISO built before PAL stamps were introduced.
+    test.commands.clear()
+    open_patch.make_iso(test.container)
+    assert test.commands
+    assert output.read_bytes() == pal_default
+
+
+@pytest.mark.parametrize("flag, enabled", [("--disable-deflicker", True), ("--no-mp3-update", False)])
+def test_pal_cli_patch_flags(open_patch_build, flag, enabled):
+    test = open_patch_build
+    test.original.write_bytes(b"RM3P01")
+    example = Path(build.__file__).with_name("example_patch.json")
+    output = test.container.with_suffix(".iso")
+    assert cli.main(["--patch", str(example), "--iso", str(test.original), "--out", str(output),
+                     "--tools", str(test.tool_folder), flag]) == 0
+    expected = bytes.fromhex("00 00 15 16 15 00 00" if enabled else "08 08 0A 0C 0A 08 08")
+    contents = output.read_bytes()
+    for offset in PAL_FILTER_OFFSETS:
+        assert contents[6 + offset : 13 + offset] == expected
+    assert all(Path(cmd[0]).name != "hpatchz.exe" for cmd in test.commands)
 
 
 def test_switching_iso_region_rebuilds_the_same_seed(open_patch_build):

@@ -37,7 +37,7 @@ class MP3Settings(settings.Group):
     iso_file: IsoFile = IsoFile("Metroid Prime 3 Corruption (PAL).iso")
     tools_folder: ToolsFolder = ToolsFolder("")
     output_folder: OutputFolder = OutputFolder("")
-    mp3update: bool = True  # Apply MP3Update and Deflicker to NTSC-U builds.
+    mp3update: bool = True  # Apply Deflicker on PAL and NTSC-U, and MP3Update on NTSC-U.
 
 
 def raw_value(group: settings.Group, key: str) -> str:

@@ -2,8 +2,8 @@
 
 Same steps as Randovania's prime3 exporter (``randovania/games/prime3/exporter/game_exporter.py``): extract with
 nodtool, replace the attract videos, stage the paks, run MP3Randomizer, rebuild with wit. Differences: MP3Randomizer
-always runs with ``--ap-mode`` (T16), MP3Update/Deflicker default to on for NTSC-U, and the seed ID is written into
-``main.dol`` (T18 part 1). No Randovania import; the helper programs come from a tools folder
+always runs with ``--ap-mode`` (T16), Deflicker defaults to on for PAL and NTSC-U, MP3Update defaults to on for
+NTSC-U, and the seed ID is written into ``main.dol`` (T18 part 1). The helper programs come from a tools folder
 (:func:`.tools.find_tools`: configured folder, ``$MP3AP_TOOLS_DIR``, cache, repo checkout, else downloaded on first
 use). Windows only for now.
 """
@@ -19,6 +19,7 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from . import deflicker_pal
 from . import seed_id as seed_id_lib
 from . import tools as tools_lib
 from .patch_data import PatchData
@@ -234,10 +235,14 @@ def patch_iso(
     if not out.parent.is_dir():
         raise PatchToolError(f"output folder does not exist: {out.parent}")
     game_id = check_input_game_id(iso, progress)
-    if game_id != "RM3E01" and (mp3_update or disable_deflicker):
-        raise PatchToolError("MP3Update and Disable Deflicker require an NTSC-U RM3E01 ISO")
+    if mp3_update and game_id != "RM3E01":
+        raise PatchToolError("MP3Update PAK patches require an NTSC-U RM3E01 ISO")
+    if disable_deflicker and game_id not in SUPPORTED_GAME_IDS:
+        raise PatchToolError("Deflicker requires a PAL RM3P01 or NTSC-U RM3E01 ISO")
     if mp3_update is None and disable_deflicker is None:
-        mp3_update = disable_deflicker = game_id == "RM3E01"
+        mp3_update = game_id == "RM3E01"
+        disable_deflicker = game_id in SUPPORTED_GAME_IDS
+    pal_deflicker = bool(disable_deflicker) and game_id == "RM3P01"
     # Before extracting: may download the tools ZIP on first use (progress goes to the T23 window).
     tools_dir = Path(tools_dir or tools_lib.find_tools(progress=progress))
     toolchain = Toolchain.from_dir(tools_dir)
@@ -247,11 +252,14 @@ def patch_iso(
     try:
         extract = work / "extract"
         paks = work / "paks"
-        optional_patches = _optional_patches(tools_dir, extract / "DATA", bool(mp3_update), bool(disable_deflicker))
+        optional_patches = _optional_patches(
+            tools_dir, extract / "DATA", bool(mp3_update), bool(disable_deflicker) and game_id == "RM3E01"
+        )
         extract.mkdir()
         paks.mkdir()
         files = extract / "DATA" / "files"
-        total = 7 if optional_patches else 6
+        main_dol = extract / "DATA" / "sys" / "main.dol"
+        total = 7 if optional_patches or pal_deflicker else 6
         step = 0
 
         def report(message: str) -> None:
@@ -261,14 +269,20 @@ def patch_iso(
 
         report("Extracting ISO...")
         run_tool([str(toolchain.nodtool), "extract", str(iso), str(extract)])
-        if not files.is_dir() or not (extract / "DATA" / "sys" / "main.dol").is_file():
+        if not files.is_dir() or not main_dol.is_file():
             raise PatchToolError(f"extraction did not produce DATA/files and DATA/sys/main.dol in {extract}")
 
         report("Removing attract videos...")
         for name in DUMMY_ATTRACTS:
             shutil.copy(toolchain.dummy_attract_dir / name, files / "Video" / "FrontEnd" / name)
 
-        if optional_patches:
+        if pal_deflicker:
+            report("Applying Deflicker...")
+            try:
+                deflicker_pal.apply_deflicker(main_dol)
+            except ValueError as error:
+                raise PatchToolError(str(error)) from error
+        elif optional_patches:
             names = "MP3Update and Deflicker" if mp3_update and disable_deflicker else (
                 "MP3Update" if mp3_update else "Deflicker"
             )
@@ -284,7 +298,7 @@ def patch_iso(
         run_tool(randomizer_command(toolchain, patch, paks, files))
 
         report("Writing seed ID into main.dol...")
-        version = seed_id_lib.write_seed_id_to_dol_file(extract / "DATA" / "sys" / "main.dol", patch.seed_id)
+        version = seed_id_lib.write_seed_id_to_dol_file(main_dol, patch.seed_id)
         if version.game_id != game_id:
             raise PatchToolError(f"main.dol is {version.description}, but the disc is {game_id}")
 

@@ -12,6 +12,22 @@ an old YAML keeps working and gives the same seeds.
 | `trick_level` | `off` | **experimental**: global trick level the logic may expect |
 | `trick_overrides` | `{}` | **experimental**: per-trick levels that replace `trick_level` |
 
+## Local patch settings (`host.yaml`)
+
+When you open your `.apmp3`, Archipelago uses `mp3update: true` by default. On PAL (`RM3P01`) this disables the game's
+vertical deflicker filter for a sharper image. On NTSC-U (`RM3E01`) it also applies MP3Update. To keep the original
+PAL filter or skip both patches on NTSC-U, edit `host.yaml` in your Archipelago folder and set the following value
+under the existing `metroidprime3_options` section. Reopen the `.apmp3` to rebuild the ISO.
+
+```yaml
+metroidprime3_options:
+  mp3update: false
+```
+
+**Troubleshooting a YAML error during generation.** Always write double-quoted paths in `host.yaml` with `/`, for
+example `iso_file: "C:/Games/Metroid Prime 3.iso"`. YAML interprets backslashes inside double quotes as escapes and
+can reject the file when you generate a seed.
+
 ## 1. Starting items
 
 By default you start at G.F.S. Valhalla, Docking Bay 5, with Power Beam, Charge Beam, Combat Visor, Scan Visor,

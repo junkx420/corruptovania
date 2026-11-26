@@ -112,7 +112,9 @@ class TestOpenPatch(unittest.TestCase):
 
     def test_matching_seed_reuses_iso_without_window(self) -> None:
         self.output_exists.return_value = True
-        self.read_seed.return_value = ("RM3P01", self.data.seed_id)
+        self.read_seed.return_value = (SimpleNamespace(game_id="RM3P01"), self.data.seed_id)
+        self.enterContext(patch.object(open_patch, "_update_stamp", return_value="True 123 456\n"))
+        self.enterContext(patch.object(Path, "read_text", return_value="True 123 456\n"))
 
         with patch.object(open_patch, "_patch_with_window") as window:
             open_patch.patch_and_launch(str(self.patch_file))

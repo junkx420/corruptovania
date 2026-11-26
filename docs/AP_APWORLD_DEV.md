@@ -137,7 +137,7 @@ ammo without a launcher). Irrelevant for the logic, because expansions are not p
 | `options.py` | `MP3Options`: Archipelago's default options plus `starting_items`, `trick_level`, `trick_overrides` (E23, T31; player guide `docs/AP_OPTIONS.md`) |
 | `opening.py` | opening chain for small starting inventories (T31): forward placement of own progression items in `pre_fill` until 8 own checks are open |
 | `output.py` | `.apmp3`: `MP3Container` (`APPatch`), `displayed_pickups`, `write_patch_file` (T05b) |
-| `settings.py` | `MP3Settings` = section `metroidprime3_options` of the `host.yaml` (original ISO, tools folder, output folder, NTSC-U MP3Update/Deflicker) |
+| `settings.py` | `MP3Settings` = section `metroidprime3_options` of `host.yaml` (original ISO, tools folder, output folder, regional MP3Update/Deflicker setting) |
 | `open_patch.py` | launcher: `.apmp3` → build ISO → start client (T05b, section 6) |
 | `archipelago.json`, `requirements.txt` | manifest and dependency for the packed `.apworld` (section 7) |
 
@@ -238,15 +238,15 @@ Sequence (`open_patch.patch_and_launch`; the launcher uses a separate process fo
    once. Only the first 6 bytes are checked (game IDs `RM3P01` and `RM3E01`; `RM3J01` with a warning from the patch tool),
    no hash: that would read 4.7 GB on every access to the setting. With `--nogui`, set `iso_file` in `host.yaml` before running.
 3. Target ISO `<name of the .apmp3>.iso` next to the `.apmp3` (or in `output_folder`). It is reused when the seed
-   ID, region and NTSC-U patch setting match. For NTSC-U, a companion `.iso.mp3update` file records the setting,
-   ISO size and modification time. An older NTSC-U ISO without this file is rebuilt on its next Open Patch.
+   ID, region and patch setting match. For PAL and NTSC-U, a companion `.iso.mp3update` file records the setting,
+   ISO size and modification time. An ISO without this file is rebuilt on its next Open Patch for either region.
 4. Patch tool (`patcher.build.patch_iso`, ~40 s). It first finds the helper programs (`patcher.tools.find_tools`,
    `AP_PATCH_TOOL.md` section 3.1): `tools_folder` (only if it contains `MP3Randomizer.exe`, otherwise ignored with a
    log warning), `$MP3AP_TOOLS_DIR`, the cache `<Archipelago>/metroidprime3_tools`, a Corruptovania checkout, a tools
    ZIP placed into the cache by hand, else it downloads `metroidprime3-tools-win.zip` from the Prime3AP release
    (SHA-256 fixed in the code). Download, check and extraction appear in the same window before step 1; errors
    (offline, wrong hash) name the manual steps. A `tkinter` window displays the tool's steps, including step 3 of 7
-   when applying both NTSC-U patches, and briefly shows
+   when applying PAL Deflicker or both NTSC-U patches, and briefly shows
    `Done` after verification. Archipelago 0.6.8 starts **Open Patch** in a separate launcher process, so this window uses
    the same toolkit as Archipelago's file picker and can run independently of the launcher's Kivy window. The patcher
    runs on a worker thread so the window stays responsive. With `--nogui`, progress and errors go only to the console
@@ -258,11 +258,18 @@ Sequence (`open_patch.patch_and_launch`; the launcher uses a separate process fo
 
 ```yaml
 metroidprime3_options:
-  iso_file: "C:\\...\\mp3.iso"   # original ISO, asked for at the first .apmp3
+  iso_file: "C:/Games/mp3.iso"   # original ISO, asked for at the first .apmp3
   tools_folder: ""              # empty: download once into <Archipelago>/metroidprime3_tools; set only for offline installs
   output_folder: ""             # empty: ISO next to the .apmp3
-  mp3update: true                # set to false to skip both MP3Update and Deflicker on NTSC-U
+  mp3update: true                # Deflicker on PAL, MP3Update and Deflicker on NTSC-U
 ```
+
+The existing `mp3update` key controls the patches available for the region, so existing `host.yaml` files can use
+the same switch for both disc versions. `false` skips the regional patches. PAL applies the validated Deflicker patch
+directly to `main.dol` and uses the base helper files. NTSC-U applies the packaged diffs through HDiffPatch.
+
+**Troubleshooting a YAML error during generation.** In `host.yaml`, always use `/` in double-quoted paths such as
+`"C:/Games/mp3.iso"`. YAML treats backslashes in double quotes as escapes, which can cause generation to fail.
 
 **Checked (T05b, command line):** `Launcher.py ..\out\AP_38224278823687041413_P2_Samus.apmp3 -- --nogui` with
 `iso_file` set: ISO built (seed ID read back), then client started, connected to the running PrimeHack

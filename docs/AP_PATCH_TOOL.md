@@ -9,7 +9,7 @@ Basis: `AP_PATCHER_CHANGES.md` (T16, `--ap-mode`, APItem), `AP_PATCHER_NOTES.md`
 >   (section 2), and an unmodified Wii standalone PAL `RM3P01` or NTSC-U `RM3E01` ISO.
 > - Same sequence as the Corruptovania exporter (extract, replace attract videos, patch paks, build ISO), but
 >   MP3Randomizer always runs with `--ap-mode` and the seed ID goes into the version-specific build info of `main.dol`
->   (T18). NTSC-U builds apply MP3Update and the Deflicker patch by default (T34).
+>   (T18). PAL builds apply Deflicker by default (T37b). NTSC-U builds default to MP3Update and Deflicker (T34).
 > - Standard library only: no runtime dependency on Randovania or Archipelago. The letter table and the
 >   checksum are copies of our own; a test compares them with the Randovania original.
 > - The checked-in `randovania/data/gollop_mp3_patcher/MP3Randomizer.exe` is now the T16 state (win-x86, one file).
@@ -25,7 +25,7 @@ In the Archipelago clone (APWorld linked in via junction, `AP_APWORLD_DEV.md` se
 
 Whether `.apmp3` or JSON, the tool recognises by the content (ZIP or not), not by the extension. More convenient for players:
 open the `.apmp3` in the Archipelago launcher (`AP_APWORLD_DEV.md` section 6); the launcher calls exactly this tool.
-Open Patch reuses an existing ISO with a matching seed ID, region and NTSC-U patch setting. To keep builds of the
+Open Patch reuses an existing ISO with a matching seed ID, region and patch setting. To keep builds of the
 same seed side by side, use separate output folders or distinct CLI `--out` paths.
 
 Without Archipelago (any Python ≥ 3.10, e.g. the repo venv), from the repo root:
@@ -48,7 +48,7 @@ which needs Archipelago. The folder call only loads the package `patcher`.)
 | `--no-verify` | do not read back game ID and seed ID in the target ISO |
 | `--no-mp3-update` | skip both MP3Update and Deflicker |
 | `--mp3-update` | explicitly select the ten MP3Update PAK patches before randomizing (NTSC-U only) |
-| `--disable-deflicker` | explicitly select the Deflicker patch to `main.dol` before writing the seed ID (NTSC-U only) |
+| `--disable-deflicker` | explicitly select the patch that disables the deflicker filter in `main.dol` (PAL and NTSC-U) |
 | `--dry-run` | only check `--patch` and print the data for MP3Randomizer |
 | `--read-seed-id <iso\|dol>` | print the seed ID of an ISO or a `main.dol` and exit |
 
@@ -56,12 +56,13 @@ Example (example data set from the repo, output shortened):
 
 ```
 .venv\Scripts\python.exe -m worlds.metroidprime3.patcher --patch worlds/metroidprime3/patcher/example_patch.json --iso ..\mp3.iso --out ..\out\t05a_example.iso
-[1/6] Extracting ISO...
-[2/6] Removing attract videos...
-[3/6] Copying paks...
-[4/6] Randomizing paks (MP3Randomizer --ap-mode)...
-[5/6] Writing seed ID into main.dol...
-[6/6] Building ISO...
+[1/7] Extracting ISO...
+[2/7] Removing attract videos...
+[3/7] Applying Deflicker...
+[4/7] Copying paks...
+[5/7] Randomizing paks (MP3Randomizer --ap-mode)...
+[6/7] Writing seed ID into main.dol...
+[7/7] Building ISO...
 Done: ..\out\t05a_example.iso
   game ID   RM3P01 (Wii PAL)
   seed ID   fab57b6dbb249239b0a72671053cdd40 (read back from the ISO)
@@ -126,9 +127,11 @@ Hypermode there, the patcher never touches location 0 anyway.
 The patch tool uses the default suit and door/welding colours, skips the Phaaze shortcut and sets
 `--hyper-hints --fast-flying` as in the exporter. AP mode disables the missile and ship-missile requirements
 (E3/E7/E15). MP3Update and Deflicker are local build options outside the patch data format. The launcher reads
-`metroidprime3_options.mp3update` from `host.yaml` (default `true`). On NTSC-U, `false` skips both patches.
-On PAL the setting has no effect. In the CLI, omitting the patch flags uses the regional default. The two explicit
-patch flags can select either patch independently. From Python, leaving both keyword arguments unset uses the
+`metroidprime3_options.mp3update` from `host.yaml` (default `true`). This single setting controls the patches available
+for the selected disc. Set it to `false` to keep the original PAL filter or skip both patches on NTSC-U. Open Patch
+rebuilds the ISO when the setting changes. The standalone CLI uses the regional default when you omit the patch flags.
+Use `--no-mp3-update` to keep the original game filter, or select the available patches
+explicitly with `--mp3-update` and `--disable-deflicker`. From Python, leaving both keyword arguments unset uses the
 regional default. An explicit `True` or `False` for either argument selects only the patches explicitly enabled.
 
 **Defaults = starter preset**, as Randovania's `patch_data_factory` created them for seed IVG2J7OR
@@ -273,13 +276,18 @@ put it unextracted into `<cache>`, or extract it anywhere and set `tools_folder`
 window. `read_seed_id_from_iso` never downloads unless `allow_download=True` (the CLI's `--read-seed-id` passes it; the
 launcher's "is the existing ISO up to date" check does not).
 
-### 3.2 MP3Update and Deflicker on NTSC-U (T34)
+### 3.2 MP3Update and Deflicker (T34, T37b)
 
 The v0.4.0 tools ZIP is prepared with `hpatchz.exe` and the eleven `.hdiff` files. Until publication, point
 `metroidprime3_options.tools_folder` or `--tools` to `randovania/data/gollop_mp3_patcher` in a Corruptovania
 checkout, or use a locally built v0.4.0 tools ZIP. If an older or incomplete folder is selected, the patch tool lists
 the missing files before extracting the ISO. An enabled NTSC-U build shows `[3/7] Applying MP3Update and Deflicker...`
 in the progress window. See [AP_NTSC.md](AP_NTSC.md) for the file list and test results.
+
+An enabled PAL build shows `[3/7] Applying Deflicker...`. It patches four seven-byte vertical filters in the extracted
+`DATA/sys/main.dol` before staging PAKs and writing the seed ID. The Python module checks the original PAL Rev 0 filter
+bytes and runs with the base helper files alone. The MP3Update PAK patches are available for NTSC-U. See
+[AP_MP3UPDATE_PAL.md](AP_MP3UPDATE_PAL.md) for the PAL analysis.
 
 ## 4. Checked-in MP3Randomizer EXE (T16 build)
 

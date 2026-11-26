@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from queue import Empty, SimpleQueue
 
-from .patcher import build, patch_data, seed_id
+from .patcher import build, patch_data
 
 logger = logging.getLogger("MetroidPrime3Patch")
 
@@ -75,7 +75,7 @@ def is_up_to_date(out: Path, data: patch_data.PatchData, tools: Path | None, iso
             return False
         if iso.exists() and build.read_game_id(iso) != version.game_id:
             return False
-        if version == seed_id.version_for_game_id("RM3E01"):
+        if version.game_id in build.SUPPORTED_GAME_IDS:
             stamp = out.with_suffix(".iso.mp3update")
             return stamp.read_text(encoding="ascii") == _update_stamp(out, mp3update)
     except (build.PatchToolError, ValueError, OSError) as error:
@@ -171,11 +171,11 @@ def make_iso(patch_file: Path, *, gui: bool = True) -> tuple[Path, dict]:
         return build.patch_iso(data, iso, out, tools_dir=tools, progress=progress, mp3_update=False)
 
     result = _patch_with_window(patch) if gui else patch(logger.info)
-    if result.game_id == "RM3E01":
+    if result.game_id in build.SUPPORTED_GAME_IDS:
         try:
             out.with_suffix(".iso.mp3update").write_text(_update_stamp(out, mp3update), encoding="ascii", newline="\n")
         except OSError as error:
-            logger.warning("Could not save the MP3Update setting for %s: %s", out, error)
+            logger.warning("Could not save the MP3Update/Deflicker setting for %s: %s", out, error)
     logger.info("Done: %s, game ID %s, seed ID %s", result.output, result.game_id, result.seed_id.hex())
     return out, manifest
 

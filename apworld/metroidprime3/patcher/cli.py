@@ -14,7 +14,8 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m worlds.metroidprime3.patcher",
         description="Metroid Prime 3 Archipelago patch tool (PAL RM3P01, NTSC-U RM3E01).",
-        epilog="NTSC-U defaults to both MP3Update and Deflicker. Use the two patch flags to select either or both.",
+        epilog="PAL defaults to Deflicker. NTSC-U defaults to MP3Update and Deflicker. "
+               "Use the patch flags to select specific patches.",
     )
     parser.add_argument("--patch", type=Path,
                         help="AP patch data: .apmp3 from Archipelago or JSON (docs/AP_PATCH_TOOL.md)")
@@ -29,7 +30,7 @@ def _parser() -> argparse.ArgumentParser:
     update = parser.add_mutually_exclusive_group()
     update.add_argument("--no-mp3-update", action="store_true", help="skip both MP3Update and Deflicker")
     update.add_argument("--mp3-update", action="store_true", help="select the MP3Update PAK patches (NTSC-U only)")
-    parser.add_argument("--disable-deflicker", action="store_true", help="select the Deflicker DOL patch (NTSC-U only)")
+    parser.add_argument("--disable-deflicker", action="store_true", help="select the Deflicker DOL patch (PAL, NTSC-U)")
     parser.add_argument("--dry-run", action="store_true", help="only validate --patch and print the MP3Randomizer data")
     parser.add_argument("--read-seed-id", type=Path, metavar="ISO_OR_DOL",
                         help="print the seed ID of a patched ISO or main.dol and exit")
