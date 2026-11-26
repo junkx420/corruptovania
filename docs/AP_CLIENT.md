@@ -90,7 +90,7 @@ Commands in the client:
    counts when its byte is set in **2 consecutive polls** (debouncing). AP ID = `0x4D503300 + pickup index`. Each
    location is sent at most once per session; locations the server already reports as checked (`checked_locations`)
    are not sent, and only locations the server knows (`server_locations`) are sent. Locations of earlier worlds are in
-   the save and are seen again on the next visit, but not sent twice.
+   the save and are seen again on the next visit, but not sent twice. The Olympus warning also runs here (section 5.2).
 6. **Learning mode** (section 7), independent of the seed check.
 7. **Goal** (section 6): end sequence after Aurora Unit 313 detected → no item giving in this poll, `CLIENT_GOAL` once.
 8. **Item giving** (section 4, only with a server connection and a passed seed check).
@@ -238,6 +238,15 @@ for the relevant scout reply and a valid in-game inventory. Cached replies also 
 
 Warnings are on by default. Use `/seedwarn off` or `/seedwarn on` to change the setting for the current client session.
 The next live playtest will check the warning in Dolphin or PrimeHack.
+
+### 5.2 G.F.S. Olympus pickup warning (T38)
+
+The client warns on the first matching in-game poll on Olympus with Ventilation Shaft (check 1) or Munitions
+Storage (check 2) still open. This also applies when you connect while already playing on Olympus.
+Collect both pickups before leaving. You can return only after the goal. Both checks hold filler in T38 seeds.
+
+The warning appears once per seed and slot during the client session. Server-confirmed checks, locally reported
+checks and the current Olympus pickup flags all count toward suppressing it.
 
 ## 6. Goal (T17, measured in T08)
 

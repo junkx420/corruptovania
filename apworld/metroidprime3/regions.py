@@ -19,7 +19,7 @@ import functools
 from collections import Counter
 from typing import TYPE_CHECKING, Mapping, NamedTuple
 
-from BaseClasses import ItemClassification, Region
+from BaseClasses import ItemClassification, LocationProgressType, Region
 
 from .data import game as game_data
 from .data import logic as logic_data
@@ -150,6 +150,8 @@ def create_regions(world: "MP3World", tricks: Mapping[str, int] | None = None) -
         region = regions[node_of(loc)]
         location = MP3Location(player, loc["name"], location_name_to_id[loc["name"]], region)
         location.access_rule = compiler.compile(loc["escape_requirement"])
+        if loc.get("missable") == "after_goal":
+            location.progress_type = LocationProgressType.EXCLUDED
         region.locations.append(location)
 
     for src in graph.sources:

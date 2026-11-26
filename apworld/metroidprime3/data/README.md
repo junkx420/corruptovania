@@ -62,6 +62,7 @@ a rule also `"escape_triggered_events"`, `"escape_assumed_events"` and `"escape_
 - `escape_requirement`: the location's own access rule (E22/E24). `{"and": []}` = no rule (28 locations).
 - `reentry_events`: events whose post-event path is part of the location rule (91).
 - `missable: "after_goal"`: after the intro, the graph reaches this location only after the goal (1 and 2).
+  The APWorld marks it `EXCLUDED` so it holds only filler (E24, T38).
 
 ### `items.py`
 
@@ -351,9 +352,9 @@ The generated event records list changed targets under `reentry_endpoints`: `gat
 the level-5 trick comparison alone. The last group is diagnostic and has no additional gate. The two re-entry
 rules use no tricks and assume no starting items.
 
-**APWorld follow-up after T31.** Mark locations carrying `missable: "after_goal"` as `EXCLUDED` during generation
-so they can contain only filler. The client could also warn before leaving Olympus if check 1 or 2 is still open.
-The flag is metadata until the follow-up.
+The APWorld marks both locations `EXCLUDED` during region creation (T38). Archipelago's early-item and main fills
+honor that classification, and the opening chain in [`opening.py`](../opening.py) skips excluded checks.
+The client warns while the player is on Olympus if either check is still open.
 
 ## Check matrix (T30, T36)
 
@@ -380,7 +381,7 @@ Vaccine failures in default seeds 100–499. The minimum starting setup still le
 the simulator's fill. The re-entry rules change the legal placements, so its 20-attempt budget succeeds on 27
 seeds where the old data succeeded on 25. Fill failures occur before play and are counted separately.
 
-**Starting items (for T31).** Sphere 0 is never empty: for all 16 choices of the removable starting items (Charge
+**Starting items (T31).** Sphere 0 is never empty: for all 16 choices of the removable starting items (Charge
 Beam, Space Jump Boots, Morph Ball, Morph Ball Bombs) it holds locations 4 and 11 (`--start-table`), so every setup
 can start. The additional combinations below are the historical T30 measurements (20 attempts per seed, seeds 0–99).
 
@@ -393,20 +394,20 @@ can start. The additional combinations below are the historical T30 measurements
 | Space Jump Boots + Morph Ball + Bombs | 65 |
 | all four (only Power Beam + Combat/Scan Visor) | 75 |
 
-Recommendation for T31: keep Space Jump Boots or Morph Ball unless the world adds early items itself (like T29's
-local early Screw Attack). With only Power Beam + Combat/Scan Visor, one more item opens at most one more location
-(Grapple Swing opens 3, Missile Launcher opens 41), so such a setup needs several early items or AP's
-`start_inventory`; check it with Archipelago's own fill (`test_generation.py` style) before offering it.
+The figures above describe the simulator. Archipelago uses T29's local early Screw Attack with the default options.
+For reduced starting inventories, [`opening.py`](../opening.py) (T31) places a short forward chain of local
+progression items before the main fill. [`test_generation.py`](../test/test_generation.py) exercises the actual
+Archipelago fill for all 16 starting-item combinations and verifies filler on both Olympus checks.
 
 ## Use by the APWorld (T04, T30)
 
 1. One AP location per `LOCATIONS` entry (ID = `id`), in the room `(region, area)`, access rule = its
-   `escape_requirement` (E22).
+   `escape_requirement` (E22). Locations with `missable: "after_goal"` are `EXCLUDED` (E24, T38).
 2. `count` items per `ITEMS` entry. `progression` controls the AP class.
 3. Location 0 (`UNPATCHED_LOCATION`) is not a location and does not occur in the logic. Hypermode is a normal pool item.
 4. Translate requirement trees into rules: "before event" = satisfied, "no item" and `node` = not satisfied.
    The node lock is already in `CONNECTIONS` (`escape_gate` for information only).
 5. Tricks: the slot's levels as a parameter (`create_regions(world, tricks)`), only `USABLE_TRICKS` (above).
 6. Starting items (E23, T31): any subset of `STARTING_ITEMS` that keeps Power Beam, Combat Visor and Scan Visor; the
-   removed ones go into the pool, Missile Expansions leave it. No data change is needed; see "Check matrix" for what
-   the fill needs.
+   removed ones go into the pool and Missile Expansions leave it. [`opening.py`](../opening.py) (T31) gives reduced
+   inventories a forward progression chain before the main fill. See "Check matrix" for the generation tests.

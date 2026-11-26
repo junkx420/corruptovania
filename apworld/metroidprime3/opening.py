@@ -21,7 +21,7 @@ from __future__ import annotations
 import itertools
 from typing import TYPE_CHECKING, NamedTuple
 
-from BaseClasses import CollectionState, Item, Location
+from BaseClasses import CollectionState, Item, Location, LocationProgressType
 
 if TYPE_CHECKING:
     from . import MP3World
@@ -39,7 +39,8 @@ class _Node(NamedTuple):
 
 def _open(world: "MP3World", node: _Node) -> list[Location]:
     return [loc for loc in world.multiworld.get_locations(world.player)
-            if loc.address is not None and loc.item is None and loc not in node.used and loc.can_reach(node.state)]
+            if loc.address is not None and loc.progress_type != LocationProgressType.EXCLUDED
+            and loc.item is None and loc not in node.used and loc.can_reach(node.state)]
 
 
 def _with(world: "MP3World", state: CollectionState, items: tuple[Item, ...]) -> CollectionState:

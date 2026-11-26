@@ -17,6 +17,7 @@ from CommonClient import ClientCommandProcessor, CommonContext, get_base_parser,
 from NetUtils import ClientStatus
 
 from ..items import BASE_ID, GAME_NAME, item_name_to_id
+from ..location_flags import LOCATION_FLAGS
 from .checks import CheckDetector, LocationTable
 from .flag_block import FlagBlockFinder
 from .game import GameState, read_game_state
@@ -32,6 +33,8 @@ from .seed_warning import CORE_LOCATIONS, SeedWarning
 DEFAULT_POLL_INTERVAL = 0.5
 RECONNECT_DELAY = 5.0
 SUPPORTED_SLOT_DATA_VERSION = 1
+OLYMPUS_PICKUPS = (1, 2)
+OLYMPUS_WORLD_ID = LOCATION_FLAGS[OLYMPUS_PICKUPS[0]][0]
 
 ITEM_ID_TO_NAME: dict[int, str] = {item_id: name for name, item_id in item_name_to_id.items()}
 
@@ -120,6 +123,7 @@ class MP3Context(CommonContext):
         self.learning = LearningMode(self.table, learning_log, logger, enabled=learning)
         self.seed_check = SeedCheck()
         self.seed_warning = SeedWarning()
+        self._olympus_warned = False
         self.giver = ItemGiver(memory, logger)
         self.goal = GoalDetector()
         self.goal_detected = False  # end sequence seen in this client session (T17)
@@ -161,6 +165,7 @@ class MP3Context(CommonContext):
                 self._announced = 0
                 self.seed_warning.core_items.clear()
                 self.seed_warning.reset_visit()
+                self._olympus_warned = False
             core_locations = sorted(CORE_LOCATIONS & self.server_locations)
             if core_locations:
                 Utils.async_start(self.send_msgs([{"cmd": "LocationScouts", "locations": core_locations,
@@ -445,10 +450,18 @@ class MP3Context(CommonContext):
         if not self.table.has_world(state.world_id):
             return  # world without locations (e.g. Phaaze)
         flag_read = self.finder.read_flags(state.world_id)
+        collected = self.table.collected(state.world_id, flag_read.flags) if flag_read else set()
+        if seed_ok and state.world_id == OLYMPUS_WORLD_ID and not self._olympus_warned:
+            checked = self.checked_locations | self.locations_checked
+            if any(index not in collected and self.table.location_id(index) not in checked
+                   for index in OLYMPUS_PICKUPS):
+                logger.warning("WARNING - G.F.S. OLYMPUS: Collect both Olympus pickups before leaving. "
+                               "You cannot return before the end.", extra={"compact_gui": True})
+                self._olympus_warned = True
         if flag_read is None:
             return  # block not found (yet), rescan is throttled
         if seed_ok:
-            new = self.detector.update(self.table.collected(state.world_id, flag_read.flags))
+            new = self.detector.update(collected)
             if new:
                 await self.report_locations(new)
         self.learning.update(state.world_id, flag_read.flags, state.item_percentage, state.inventory_valid,

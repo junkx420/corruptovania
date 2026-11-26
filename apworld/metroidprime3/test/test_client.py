@@ -7,6 +7,9 @@ import logging
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
+
+from CommonClient import process_server_cmd
 
 from ..client import flag_block, game
 from ..client.checks import CheckDetector, LocationTable
@@ -241,6 +244,60 @@ class TestContext(unittest.IsolatedAsyncioTestCase):
         for _ in range(times):
             delay = await ctx.poll_once()
         return delay
+
+    async def test_olympus_warns_on_entry_once_with_either_check_open(self) -> None:
+        for completed in (1, 2):
+            with self.subTest(completed=completed):
+                memory = FakeMemory()
+                memory.set_ingame(NORION)
+                ctx = make_context(memory, self.log_path)
+                ctx.checked_locations = {BASE_ID + completed}
+                with patch.object(logging.getLogger("Client"), "warning") as warning:
+                    await self.poll(ctx)
+                    warning.assert_not_called()
+                    memory.set_world(OLYMPUS)
+                    await self.poll(ctx)
+                    warning.assert_called_once_with(
+                        "WARNING - G.F.S. OLYMPUS: Collect both Olympus pickups before leaving. "
+                        "You cannot return before the end.", extra={"compact_gui": True})
+                    await self.poll(ctx, 3)
+                    memory.set_world(NORION)
+                    await self.poll(ctx)
+                    memory.set_world(OLYMPUS)
+                    await self.poll(ctx)
+                    self.assertEqual(warning.call_count, 1)
+
+    async def test_olympus_warns_when_connecting_there(self) -> None:
+        memory = FakeMemory()
+        memory.set_ingame(OLYMPUS)
+        ctx = make_context(memory, self.log_path)
+        ctx.connected_identity = None
+        ctx.fake_server = False
+        with patch.object(logging.getLogger("Client"), "warning") as warning:
+            await self.poll(ctx)
+            warning.assert_not_called()
+            ctx.fake_server = True
+            with patch("CommonClient.Utils.persistent_store"):
+                await process_server_cmd(ctx, {"cmd": "Connected", "team": 0, "slot": 1, "players": [], "slot_info": {},
+                                               "missing_locations": [BASE_ID + 1, BASE_ID + 2],
+                                               "checked_locations": [], "slot_data": {"slot_data_version": 1}})
+            await self.poll(ctx)
+            self.assertEqual(warning.call_count, 1)
+            self.assertIn("Collect both Olympus pickups", warning.call_args.args[0])
+
+    async def test_olympus_does_not_warn_when_both_checks_are_done(self) -> None:
+        for checked_on_server in ((), (1,), (1, 2)):
+            with self.subTest(checked_on_server=checked_on_server):
+                memory = FakeMemory()
+                block = memory.place_block(0x80A13AA0, OLYMPUS)
+                memory.set_ingame(OLYMPUS)
+                ctx = make_context(memory, self.log_path)
+                ctx.checked_locations = {BASE_ID + index for index in checked_on_server}
+                for index in {1, 2}.difference(checked_on_server):
+                    memory.set_flag(block, LOCATION_FLAGS[index][1])
+                with patch.object(logging.getLogger("Client"), "warning") as warning:
+                    await self.poll(ctx, 3)
+                    warning.assert_not_called()
 
     async def test_wrong_game_id_reads_nothing_else(self) -> None:
         memory = FakeMemory(game_id=b"GZLE99")
