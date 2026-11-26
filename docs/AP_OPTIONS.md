@@ -160,6 +160,16 @@ A bare `off` works too (YAML reads it as `false`, which the world accepts as `of
 - A seed with removed starting items needs a patched ISO from that seed's `.apmp3` (v0.4.0 patch tool). An ISO patched
   for another seed still has the old starting items; the client's seed check refuses it anyway (T18).
 
+### Universal Tracker
+
+The Metroid Prime 3 APWorld supports Universal Tracker v0.3.8 starting with the v0.4.0 release. Connect UT to your
+slot with the updated APWorld installed. UT can rebuild the slot from the seed's starting-item choice, trick level,
+per-trick overrides and excluded locations without a player YAML. It tracks starting inventory and pickups received
+from the server, including items placed by the opening chain. The Olympus exclusions are part of the rebuilt world.
+
+Older seeds use any starting-item and effective trick data they recorded, with defaults for missing options.
+User-configured location exclusions are available for seeds generated with this support.
+
 ## 4. Fill check (T31)
 
 Archipelago's own fill (`distribute_items_restrictive` + progression balancing, in process, solo). The "with chain"

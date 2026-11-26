@@ -24,6 +24,7 @@ from .regions import GOAL_EVENT, create_regions, starting_resources
 from .settings import MP3Settings
 
 SLOT_DATA_VERSION = 1
+TRACKER_OPTIONS = ("starting_items", "trick_level", "trick_overrides", "start_inventory", "exclude_locations")
 
 
 def launch_client(*args: str) -> None:
@@ -57,6 +58,7 @@ class MP3World(World):
     options_dataclass = MP3Options
     options: MP3Options
     topology_present = True
+    ut_can_gen_without_yaml = True
     settings: ClassVar[MP3Settings]
 
     item_name_to_id: ClassVar[dict[str, int]] = item_name_to_id
@@ -75,18 +77,39 @@ class MP3World(World):
     removed_starting_items: list[str]  # removable starting items the player gave up; they go into the pool
     tricks: dict[str, int]  # the slot's trick levels {trick name: 1-3}, only tricks above "off"
 
+    @staticmethod
+    def interpret_slot_data(slot_data: dict[str, Any]) -> dict[str, Any]:
+        """Ask Universal Tracker to regenerate this slot with re_gen_passthrough."""
+        return slot_data or {"options": {}}
+
     def generate_early(self) -> None:
+        passthrough = getattr(self.multiworld, "re_gen_passthrough", {}) or {}
+        if self.game in passthrough:
+            slot_data = passthrough[self.game]
+            # Older slots already record the kept items and effective trick levels.
+            values = {
+                "starting_items": sorted(set(REMOVABLE_STARTING_ITEMS).intersection(
+                    slot_data.get("starting_items", REMOVABLE_STARTING_ITEMS))),
+                "trick_overrides": slot_data.get("tricks", {}),
+                **slot_data.get("options", {}),
+            }
+            for name in TRACKER_OPTIONS:
+                option = self.options_dataclass.type_hints[name]
+                setattr(self.options, name, option.from_any(values.get(name, option.default)))
+
         kept = set(FIXED_STARTING_ITEMS) | set(self.options.starting_items.value)
         self.starting_item_names = [name for name in starting_names() if name in kept]
         self.removed_starting_items = [name for name in REMOVABLE_STARTING_ITEMS if name not in kept]
         self.tricks = resolve_tricks(self.options.trick_level.value, self.options.trick_overrides.value)
-        if all(getattr(self.options, name).value == option.from_any(option.default).value
-               for name, option in self.options_dataclass.type_hints.items()):
+        if not getattr(self.multiworld, "generation_is_fake", False) and all(
+                getattr(self.options, name).value == option.from_any(option.default).value
+                for name, option in self.options_dataclass.type_hints.items()):
             # Screw Attack opens two more checks from the starting inventory. Keep it in this player's world.
             self.multiworld.local_early_items[self.player]["Screw Attack"] = 1
 
     def pre_fill(self) -> None:
-        if self.removed_starting_items:
+        # UT uses server items and only sweeps addressless events. Keep the opening chain in real seeds.
+        if self.removed_starting_items and not getattr(self.multiworld, "generation_is_fake", False):
             place_opening(self)  # E23, T31: small starting inventories (opening.py)
 
     def create_regions(self) -> None:
@@ -111,7 +134,7 @@ class MP3World(World):
         write_patch_file(self.multiworld, self.player, output_directory)
 
     def fill_slot_data(self) -> dict[str, Any]:
-        """Everything the client needs to compute the target inventory (E11). Format: docs/AP_APWORLD_DEV.md."""
+        """Client inventory data and the options needed to rebuild this world in Universal Tracker."""
         return {
             "slot_data_version": SLOT_DATA_VERSION,
             "seed_name": self.multiworld.seed_name,
@@ -120,7 +143,14 @@ class MP3World(World):
             "start_location": list(game_data.START_LOCATION),
             "starting_items": list(self.starting_item_names),  # T31: the slot's choice (E23)
             "starting_resources": starting_resources(self.starting_item_names),
-            "tricks": dict(self.tricks),  # T31, informational: trick levels the logic expects (empty = none)
+            "tricks": dict(self.tricks),  # Effective trick levels (empty = none)
+            "options": {
+                "starting_items": sorted(self.options.starting_items.value),
+                "trick_level": self.options.trick_level.value,
+                "trick_overrides": dict(self.options.trick_overrides.value),
+                "start_inventory": dict(self.options.start_inventory.value),
+                "exclude_locations": sorted(self.options.exclude_locations.value),
+            },
             "items": {
                 name: {
                     "id": BASE_ID + ITEM_OFFSETS[name],
