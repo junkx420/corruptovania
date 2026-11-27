@@ -385,7 +385,7 @@ section 6 step 4).
 From the Corruptovania root (plain Python ≥ 3.10, no Archipelago needed):
 
 ```powershell
-python apworld/tools/release/build_release.py --tag v0.3.0 --fetch-sources
+python apworld/tools/release/build_release.py --tag v0.4.0 --fetch-sources
 ```
 
 - Reads every input as a raw Git blob of `--ref` (default `HEAD`), so uncommitted work of other workers in the shared
@@ -407,8 +407,8 @@ python apworld/tools/release/build_release.py --tag v0.3.0 --fetch-sources
 Draft on GitHub (the tag is created when the draft is published):
 
 ```powershell
-gh release create v0.3.0 --repo junkx420/Prime3AP --draft --prerelease --title "Prime3AP 0.3.0 (beta)" `
-  --notes-file ..\Prime3AP\release-notes\v0.3.0.md build\release\metroidprime3.apworld `
+gh release create v0.4.0 --repo junkx420/Prime3AP --draft --prerelease --title "Prime3AP 0.4.0 (beta)" `
+  --notes-file ..\Prime3AP\release-notes\v0.4.0.md build\release\metroidprime3.apworld `
   build\release\metroidprime3-tools-win.zip build\release\metroidprime3-example.yaml `
   build\release\wiimms-iso-tools-r8638-src.tar.gz build\release\cygwin-3.1.7-1-src.tar.xz build\release\SHA256SUMS.txt
 ```
@@ -476,6 +476,9 @@ release as the tools ZIP (`wiimms-iso-tools-r8638-src.tar.gz`, `cygwin-3.1.7-1-s
 counts as equivalent access from the same place (GPL-2.0 section 3, GPL-3.0 section 6d). The tools ZIP's
 `THIRD-PARTY-NOTICES.txt` points to these assets. When the tools ZIP moves to a new release (`TOOLS_RELEASE_TAG`), the
 source archives must be attached there too.
+
+The [v0.4.0 changelog](AP_CHANGELOG.md) covers the player-facing changes.
+For v0.4.0, update the minimum world version in the release repository’s example YAML before building the assets.
 
 ### NTSC-U patch redistribution (T34)
 

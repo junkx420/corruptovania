@@ -3,8 +3,7 @@
 As of 2026-11-26 · world version 0.4.0 · decision E23
 
 Metroid Prime 3: Corruption has three game-specific YAML options on top of Archipelago's standard options
-(`progression_balancing`, `accessibility`, `start_inventory`, …). All three default to the behaviour of v0.3.0, so
-an old YAML keeps working and gives the same seeds.
+(`progression_balancing`, `accessibility`, `start_inventory`, …). All three retain the starting inventory and trick settings from v0.3.0 by default. Existing player YAMLs still work.
 
 | Option | Default | What it does |
 |---|---|---|
@@ -96,32 +95,33 @@ Everything except the Morph Ball:
 
 ## 2. Tricks (experimental)
 
-The logic can expect tricks from Corruptovania's database. Only the tricks the converter rates as usable are offered
-(enough uses in the database, makes something reachable earlier, nothing the APWorld cannot evaluate), each up to a
-maximum level:
+**For new players, use `trick_level: 'off'` and leave `trick_overrides` empty.** Even `beginner` can make a real
+technique the only available route to an important item. In one generated seed, reaching the pickup in Command
+Courtyard required a Bomb Space Jump (Bomb/Spring Space Jump level 1) because Space Jump Boots were unavailable
+at that point.
 
-| Trick | Highest level |
-|---|---|
-| Bomb Jump | advanced |
-| Slope Jump | advanced |
-| Knowledge | advanced |
-| Movement | advanced |
-| Bomb/Spring Space Jump | advanced |
-| Invisible Objects | intermediate |
-| Terminal Fall Abuse | advanced |
-| Open Barriers from Behind | intermediate |
-| Combat | advanced |
+The converter offers the following tricks from Randovania's Prime 3 logic database. The descriptions summarize
+`randovania/games/prime3/logic_database/header.json`. Links marked “related” point to wiki examples or mechanics
+for categories without a dedicated page.
 
-`trick_level` (`off`, `beginner`, `intermediate`, `advanced`) sets every offered trick at once, capped at its highest
-level (`advanced` gives Invisible Objects and Open Barriers from Behind at `intermediate`). `trick_overrides` sets
-single tricks; a value is `off`, `beginner`, `intermediate` or `advanced` (or 0–3), at most the trick's highest level.
-Anything else (an unknown trick, a level above the maximum) stops generation with an error.
+| Trick | Highest level | Description | Wiki |
+|---|---|---|---|
+| Bomb Jump | advanced | Chain bombs to gain height. | [Bomb Jump](https://wiki.metroidprime.run/wiki/Bomb_Jump) |
+| Slope Jump | advanced | Jump into a slope to gain extra height. | [Slope Jump](https://wiki.metroidprime.run/wiki/Slope_Jump) |
+| Knowledge | advanced | Use hidden object vulnerabilities, such as charged Hypermode on Command Vault's Seeker Missile locks. | [Hypermode (related)](https://wiki.metroidprime.run/wiki/Hypermode) |
+| Movement | advanced | Use non-obvious movement outside the other trick categories. | [Gateway (related)](https://wiki.metroidprime.run/wiki/Gateway) |
+| Bomb/Spring Space Jump | advanced | Use a bomb or Spring Ball, unmorph instantly and jump again within 0.4 seconds for extra height. | [Bomb Space Jump](https://wiki.metroidprime.run/wiki/Bomb_Space_Jump#Metroid_Prime_3:_Corruption) |
+| Invisible Objects | intermediate | Interact with objects such as Phazite barriers without the X-Ray Visor. | [X-Ray Visor (related)](https://metroid.fandom.com/wiki/X-Ray_Visor) |
+| Terminal Fall Abuse | advanced | Trigger a fall respawn to reach an unintended part of a room. | [Terminal Fall](https://wiki.metroidprime.run/wiki/Terminal_Fall) |
+| Open Barriers from Behind | intermediate | Use items or techniques to open a gate from the other side. | [Gateway (related)](https://wiki.metroidprime.run/wiki/Gateway) |
+| Combat | advanced | Defeat enemies or bosses with fewer items and less health. | [Prime 3 Low% (related)](https://wiki.metroidprime.run/wiki/Low%25#Metroid_Prime_3:_Corruption) |
 
-What the levels mean in the game is described in Randovania's trick documentation for Metroid Prime 3. The way out of
-a dead end (getting back from a Leviathan core, for example) is always computed **without** tricks, so tricks never
-trap you; they only let the logic put items behind trick routes. The trick option is experimental: the database's
-trick data for Metroid Prime 3 is young, and the AP logic checks damage requirements with full energy, which is
-optimistic for the Knowledge and Combat tricks.
+`trick_level` (`off`, `beginner`, `intermediate`, `advanced`) sets all offered tricks, capped at each trick's highest
+level. `trick_overrides` sets individual levels using those names or the corresponding numbers 0–3. An unknown
+trick name or an override above the trick's maximum stops generation with an error.
+
+Escape requirements are computed with tricks off. The trick settings are experimental. The AP logic evaluates
+damage requirements at full energy, which can make some Knowledge and Combat routes harder in play.
 
 ### Examples
 
@@ -154,7 +154,7 @@ A bare `off` works too (YAML reads it as `false`, which the world accepts as `of
 
 ## 3. Compatibility
 
-- Old YAMLs (v0.3.0) without these options generate exactly the same placements as before.
+- Old YAMLs (v0.3.0) still work. Regenerating with v0.4.0 can change placements because of the updated logic.
 - The client reads the starting items from the seed (`slot_data`). Seeds generated with v0.3.0 have no choice there
   and keep all seven starting items; a v0.4.0 client plays them as before.
 - A seed with removed starting items needs a patched ISO from that seed's `.apmp3` (v0.4.0 patch tool). An ISO patched
