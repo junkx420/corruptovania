@@ -1,6 +1,6 @@
 # STATUS
 
-As of 2026-11-27 · v0.4.0 beta published (T39).
+As of 2026-11-28 · v0.4.0 beta published (T39). v0.4.1 scope decided (E27).
 
 | Task ID | Description | Status | Session | Result |
 |---|---|---|---|---|
@@ -50,8 +50,11 @@ As of 2026-11-27 · v0.4.0 beta published (T39).
 | T42 | Implement the one-time Energy Tank refill (E25). Verify the field and pickup behavior on NTSC-U RM3E01 before enabling it there. Test PAL and any verified NTSC-U build, including duplicate delivery, reload, reconnect and subsequent damage. | open (live checks after T21) | – | – |
 | T43 | Evaluate durable Energy Tank receipt tracking across client restarts, including deliveries while offline and interruption between the RAM write and bookkeeping. Define the intended behavior and test cases before implementing persistence. | open (after T42) | – | – |
 | T44 | Validate the GameState flag-block selector (E26) on PrimeHack PAL and NTSC-U across distinct saves, cold boots and pointer relocation. Compare raw OR and rooted flags against known pickup state in multiple worlds and record evidence for any client change. | open (live checks after T42) | – | – |
+| T45 | Reproduce the SkyTown Elysia B9 crash from a seed-matched save before Bomb Part 1 without Seeker Missile. Capture the return transition and recovery. Compare with the normal three-part sequence with Seeker Missile. | open (needs a matching Elysia test save) | – | – |
+| T46 | Determine which story conditions enable the Federation trooper and Proving Grounds Lift before Gandrayda. Trace them in the room data and verify the ordinary approach without Noclip when a suitable save is available. | open | – | – |
+| T47 | Prepare v0.4.1 (E27) after T42. Bump world_version, build and verify release assets, document refill and regional coverage, and smoke-test the packaged client with Archipelago 0.6.8 and PrimeHack. Obtain user approval before publishing. | open (after T42) | – | – |
 
-Live tasks require the user at the game. Run one at a time, in this order: T21, T42 live checks, T44.
+Live tasks require the user at the game. Run one at a time. Prioritize the T42 live checks, followed by the T47 release smoke test. Schedule T44–T46 separately when their test setups are ready.
 
 ## Questions for Fable (substitute without access: Opus 5.5, effort xhigh)
 
